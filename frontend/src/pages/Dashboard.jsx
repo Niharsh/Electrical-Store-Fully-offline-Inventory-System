@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useProducts } from '../context/ProductContext';
 import { useInvoices } from '../context/InvoiceContext';
+import { useSalesBills } from '../context/SalesBillsContext';
+import { usePurchaseBills } from '../context/PurchaseBillsContext';
+import SalesTable from '../components/SalesAndPurchases/SalesTable';
+import PurchasesTable from '../components/SalesAndPurchases/PurchasesTable';
+import PurchasesForm from '../components/SalesAndPurchases/PurchasesForm';
 
 /**
  * Dashboard Page - Overview of medical store inventory and billing
@@ -9,13 +14,15 @@ import { useInvoices } from '../context/InvoiceContext';
  * - Total products (all types: tablets, syrups, powders, creams, diapers, condoms, sachets)
  * - Low stock count (threshold determined by backend)
  * - Expiry overview with filtering (6/3/1 month)
- * - Recent invoices
+ * - Sales & Purchases Overview with paid/due tracking
  * 
  * All data from API - no business logic in frontend
  */
 const Dashboard = () => {
   const { products, loading: productsLoading, fetchProducts } = useProducts();
   const { invoices, fetchInvoices } = useInvoices();
+  const { summary: salesSummary, fetchSummary: fetchSalesSummary } = useSalesBills();
+  const { summary: purchaseSummary, fetchSummary: fetchPurchasesSummary } = usePurchaseBills();
   const [stats, setStats] = useState({
     totalProducts: 0,
     lowStockCount: 0,
@@ -23,11 +30,14 @@ const Dashboard = () => {
   });
   const [selectedExpiryRange, setSelectedExpiryRange] = useState(null);
   const [expiringProducts, setExpiringProducts] = useState([]);
+  const [salesPurchasesPeriod, setSalesPurchasesPeriod] = useState('month');
 
   useEffect(() => {
     fetchProducts();
     fetchInvoices();
-  }, []);
+    fetchSalesSummary(salesPurchasesPeriod);
+    fetchPurchasesSummary(salesPurchasesPeriod);
+  }, [salesPurchasesPeriod]);
 
   // Calculate expiring products
   const getExpiringProducts = (monthsRange) => {
@@ -222,6 +232,119 @@ const Dashboard = () => {
         )}
       </div>
 
+      {/* Sales & Purchases Overview Section */}
+      <div className="card">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold">💰 Sales & Purchases Overview</h2>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setSalesPurchasesPeriod('month')}
+              className={`px-4 py-2 rounded font-semibold transition ${
+                salesPurchasesPeriod === 'month'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              📅 Monthly
+            </button>
+            <button
+              onClick={() => setSalesPurchasesPeriod('year')}
+              className={`px-4 py-2 rounded font-semibold transition ${
+                salesPurchasesPeriod === 'year'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              📊 Annually
+            </button>
+          </div>
+        </div>
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-green-50 p-4 rounded-lg border-l-4 border-green-600">
+            <p className="text-gray-600 text-sm mb-1">Total Sales</p>
+            <p className="text-3xl font-bold text-green-600">₹{parseFloat(salesSummary.total_sales || 0).toFixed(2)}</p>
+            <p className="text-xs text-gray-500 mt-2">{salesSummary.bill_count || 0} bills</p>
+          </div>
+
+          <div className="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-600">
+            <p className="text-gray-600 text-sm mb-1">Total Amount Paid</p>
+            <p className="text-3xl font-bold text-blue-600">₹{parseFloat(salesSummary.total_paid || 0).toFixed(2)}</p>
+            <p className="text-xs text-gray-500 mt-2">From sales</p>
+          </div>
+
+          <div className="bg-orange-50 p-4 rounded-lg border-l-4 border-orange-600">
+            <p className="text-gray-600 text-sm mb-1">Total Amount Due</p>
+            <p className="text-3xl font-bold text-orange-600">₹{parseFloat(salesSummary.total_due || 0).toFixed(2)}</p>
+            <p className="text-xs text-gray-500 mt-2">From customers</p>
+          </div>
+
+          <div className="bg-purple-50 p-4 rounded-lg border-l-4 border-purple-600">
+            <p className="text-gray-600 text-sm mb-1">Total Purchases</p>
+            <p className="text-3xl font-bold text-purple-600">₹{parseFloat(purchaseSummary.total_purchases || 0).toFixed(2)}</p>
+            <p className="text-xs text-gray-500 mt-2">{purchaseSummary.bill_count || 0} bills</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className="bg-indigo-50 p-4 rounded-lg">
+            <p className="text-gray-600 text-sm mb-1">Purchase Amount Paid</p>
+            <p className="text-2xl font-bold text-indigo-600">₹{parseFloat(purchaseSummary.total_paid || 0).toFixed(2)}</p>
+          </div>
+
+          <div className="bg-red-50 p-4 rounded-lg">
+            <p className="text-gray-600 text-sm mb-1">Amount Due to Wholesalers</p>
+            <p className="text-2xl font-bold text-red-600">₹{parseFloat(purchaseSummary.total_due || 0).toFixed(2)}</p>
+          </div>
+        </div>
+
+        {/* Tabs for Sales and Purchases */}
+        <div className="mt-8">
+          <div className="mb-4 border-b-2 border-gray-300">
+            <div className="flex gap-4">
+              <input
+                type="radio"
+                id="sales-tab"
+                name="section"
+                value="sales"
+                defaultChecked
+                className="hidden"
+              />
+              <label htmlFor="sales-tab" className="cursor-pointer pb-2 px-4 font-semibold border-b-4 border-blue-600 text-blue-600">
+                📈 Sales Bills
+              </label>
+              
+              <input
+                type="radio"
+                id="purchases-tab"
+                name="section"
+                value="purchases"
+                className="hidden"
+              />
+              <label htmlFor="purchases-tab" className="cursor-pointer pb-2 px-4 font-semibold text-gray-600 hover:text-blue-600">
+                📦 Purchase Bills
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="sales-tab" className="hidden">Sales Bills</label>
+            <div id="sales-content" className="tab-content">
+              <SalesTable period={salesPurchasesPeriod} />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="purchases-tab" className="hidden">Purchase Bills</label>
+            <div id="purchases-content" className="mt-8 space-y-8">
+              <PurchasesForm onSuccess={() => {}} />
+              <PurchasesTable period={salesPurchasesPeriod} />
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="card">
         <h2 className="text-2xl font-bold mb-4">Quick Actions</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -253,3 +376,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+

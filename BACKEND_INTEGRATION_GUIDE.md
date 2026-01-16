@@ -336,6 +336,98 @@ class InvoiceItem(models.Model):
         super().delete(*args, **kwargs)
         # Recalculate invoice total
         invoice.save()
+
+
+class SalesBill(models.Model):
+    """Sales bill tracking with paid/due amounts - derived from Invoices"""
+    invoice = models.OneToOneField(Invoice, on_delete=models.CASCADE, related_name='sale_bill')
+    bill_number = models.CharField(max_length=50, unique=True, help_text="Unique bill number (auto-generated from invoice ID)")
+    date = models.DateTimeField(auto_now_add=True, help_text="Date of sale")
+    customer_name = models.CharField(max_length=255, help_text="Customer name from invoice")
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2, help_text="Total bill amount")
+    amount_paid = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=0,
+        help_text="Amount paid by customer (editable)"
+    )
+    amount_due = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        editable=False,
+        help_text="Amount due (auto-calculated: total_amount - amount_paid)"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date']
+        indexes = [
+            models.Index(fields=['bill_number']),
+            models.Index(fields=['date']),
+            models.Index(fields=['customer_name']),
+        ]
+
+    def __str__(self):
+        return f"Sales Bill #{self.bill_number} - {self.customer_name} (₹{self.total_amount})"
+
+    def save(self, *args, **kwargs):
+        """Auto-calculate amount_due when amount_paid changes"""
+        self.amount_due = self.total_amount - self.amount_paid
+        if self.amount_due < 0:
+            raise ValueError("Amount paid cannot exceed total amount")
+        super().save(*args, **kwargs)
+
+
+class PurchaseBill(models.Model):
+    """Purchase bill from wholesaler with paid/due tracking"""
+    bill_number = models.CharField(max_length=50, unique=True, help_text="Purchase bill number from wholesaler")
+    date = models.DateField(help_text="Date of purchase")
+    wholesaler_name = models.CharField(max_length=255, help_text="Wholesaler/supplier name")
+    contact_number = models.CharField(
+        max_length=20, 
+        blank=True,
+        help_text="Wholesaler contact number"
+    )
+    total_amount = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        help_text="Total purchase amount"
+    )
+    amount_paid = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=0,
+        help_text="Amount paid to wholesaler (editable)"
+    )
+    amount_due = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        editable=False,
+        help_text="Amount due to wholesaler (auto-calculated: total_amount - amount_paid)"
+    )
+    notes = models.TextField(blank=True, help_text="Additional notes about purchase")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date']
+        indexes = [
+            models.Index(fields=['bill_number']),
+            models.Index(fields=['date']),
+            models.Index(fields=['wholesaler_name']),
+        ]
+
+    def __str__(self):
+        return f"Purchase Bill #{self.bill_number} - {self.wholesaler_name} (₹{self.total_amount})"
+
+    def save(self, *args, **kwargs):
+        """Auto-calculate amount_due when amount_paid changes"""
+        self.amount_due = self.total_amount - self.amount_paid
+        if self.amount_due < 0:
+            raise ValueError("Amount paid cannot exceed total amount")
+        super().save(*args, **kwargs)
+
 ```
 
 ---
@@ -464,6 +556,57 @@ class InvoiceCreateSerializer(serializers.Serializer):
         invoice.save()
         
         return invoice
+
+
+class SalesBillSerializer(serializers.ModelSerializer):
+    """Serializer for sales bills with paid/due tracking"""
+    customer_name = serializers.CharField(read_only=True)
+    total_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    
+    class Meta:
+        model = SalesBill
+        fields = ['id', 'bill_number', 'date', 'customer_name', 'total_amount', 'amount_paid', 'amount_due']
+        read_only_fields = ['bill_number', 'date', 'customer_name', 'total_amount', 'amount_due']
+
+    def update(self, instance, validated_data):
+        """Allow updating amount_paid, which auto-calculates amount_due"""
+        instance.amount_paid = validated_data.get('amount_paid', instance.amount_paid)
+        instance.save()  # Triggers amount_due auto-calculation
+        return instance
+
+
+class PurchaseBillSerializer(serializers.ModelSerializer):
+    """Serializer for purchase bills with paid/due tracking"""
+    
+    class Meta:
+        model = PurchaseBill
+        fields = ['id', 'bill_number', 'date', 'wholesaler_name', 'contact_number', 'total_amount', 'amount_paid', 'amount_due', 'notes']
+        read_only_fields = ['amount_due']
+
+    def validate_bill_number(self, value):
+        """Ensure bill number is unique"""
+        if PurchaseBill.objects.filter(bill_number=value).exists():
+            raise serializers.ValidationError("Bill number already exists")
+        return value
+
+    def validate_total_amount(self, value):
+        """Ensure total amount is positive"""
+        if value <= 0:
+            raise serializers.ValidationError("Total amount must be greater than 0")
+        return value
+
+    def validate_amount_paid(self, value):
+        """Ensure amount paid is not negative"""
+        if value < 0:
+            raise serializers.ValidationError("Amount paid cannot be negative")
+        return value
+
+    def update(self, instance, validated_data):
+        """Allow updating amount_paid, which auto-calculates amount_due"""
+        for field in validated_data:
+            setattr(instance, field, validated_data[field])
+        instance.save()  # Triggers amount_due auto-calculation
+        return instance
 ```
 
 ---

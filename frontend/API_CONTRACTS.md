@@ -809,3 +809,53 @@ All endpoints should return appropriate error codes:
 - All responses include full object data (not just IDs)
 
 These can be changed without frontend refactoring if the API response structure changes.
+
+---
+
+## 6. Sales Bills Endpoint
+
+Track sales from invoices with paid/due amounts.
+
+### GET /sales-bills/
+
+List all sales bills (derived from invoices) with filtering and search support.
+
+**Query Parameters**:
+- `search` (optional): Search by bill_number or customer_name
+- `date__gte` (optional): Filter by date >= (ISO format: YYYY-MM-DD)
+- `date__lte` (optional): Filter by date <= (ISO format: YYYY-MM-DD)
+- `page` (optional): Pagination
+
+### PATCH /sales-bills/{id}/
+
+Update sales bill (primarily to track amount paid).
+
+### GET /sales-bills/summary/
+
+Get sales summary for dashboard (monthly/yearly).
+
+---
+
+## 7. Purchase Bills Endpoint
+
+Track purchases from wholesalers with paid/due amounts.
+
+### GET /purchase-bills/
+
+List all purchase bills with filtering and search support.
+
+### POST /purchase-bills/
+
+Create new purchase bill.
+
+### PATCH /purchase-bills/{id}/
+
+Update purchase bill (primarily to track amount paid).
+
+### DELETE /purchase-bills/{id}/
+
+Delete a purchase bill.
+
+### GET /purchase-bills/summary/
+
+Get purchase summary for dashboard (monthly/yearly).
