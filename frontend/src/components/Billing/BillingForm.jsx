@@ -20,7 +20,8 @@ const BillingForm = ({ onBillingComplete }) => {
       product_id: '', 
       batch_number: '',
       quantity: '', 
-      mrp: '' 
+      selling_rate: '',
+      mrp: ''
     }]);
   };
 
@@ -28,25 +29,28 @@ const BillingForm = ({ onBillingComplete }) => {
     const updatedItems = [...billItems];
     updatedItems[index][field] = value;
 
-    // Auto-fill batches and MRP if product is selected
+    // Auto-fill batches and selling rate if product is selected
     if (field === 'product_id' && value) {
       const selectedProduct = products.find(p => p.id === parseInt(value));
       if (selectedProduct && selectedProduct.batches && selectedProduct.batches.length > 0) {
         // Set first batch as default
         updatedItems[index].batch_number = selectedProduct.batches[0].batch_number;
+        updatedItems[index].selling_rate = selectedProduct.batches[0].selling_rate;
         updatedItems[index].mrp = selectedProduct.batches[0].mrp;
       } else {
         updatedItems[index].batch_number = '';
+        updatedItems[index].selling_rate = '';
         updatedItems[index].mrp = '';
       }
     }
 
-    // Auto-fill MRP when batch is selected
+    // Auto-fill selling rate and MRP when batch is selected
     if (field === 'batch_number' && updatedItems[index].product_id) {
       const selectedProduct = products.find(p => p.id === parseInt(updatedItems[index].product_id));
       if (selectedProduct && selectedProduct.batches) {
         const selectedBatch = selectedProduct.batches.find(b => b.batch_number === value);
         if (selectedBatch) {
+          updatedItems[index].selling_rate = selectedBatch.selling_rate;
           updatedItems[index].mrp = selectedBatch.mrp;
         }
       }
@@ -76,12 +80,12 @@ const BillingForm = ({ onBillingComplete }) => {
       // Validate all items have required fields
       for (let i = 0; i < billItems.length; i++) {
         const item = billItems[i];
-        if (!item.product_id || !item.batch_number || !item.quantity || !item.mrp) {
-          throw new Error(`Item ${i + 1} is missing required fields (product, batch, quantity, MRP)`);
+        if (!item.product_id || !item.batch_number || !item.quantity || !item.selling_rate) {
+          throw new Error(`Item ${i + 1} is missing required fields (product, batch, quantity, selling rate)`);
         }
       }
 
-      // Prepare invoice data with batch and MRP information
+      // Prepare invoice data with batch and selling rate information
       const invoiceData = {
         customer_name: formData.customer_name,
         customer_phone: formData.customer_phone || null,
@@ -90,7 +94,8 @@ const BillingForm = ({ onBillingComplete }) => {
           product_id: parseInt(item.product_id),
           batch_number: item.batch_number,
           quantity: parseInt(item.quantity),
-          mrp: parseFloat(item.mrp),
+          selling_rate: parseFloat(item.selling_rate),
+          mrp: parseFloat(item.mrp), // For invoice display only
         })),
       };
 
@@ -224,12 +229,25 @@ const BillingForm = ({ onBillingComplete }) => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold mb-1">MRP (₹) *</label>
+                    <label className="block text-sm font-semibold mb-1">Selling Rate (₹) *</label>
+                    <input
+                      type="number"
+                      value={item.selling_rate}
+                      onChange={(e) => handleItemChange(index, 'selling_rate', e.target.value)}
+                      className="input-field text-sm bg-gray-200 cursor-not-allowed"
+                      step="0.01"
+                      placeholder="Auto-filled"
+                      disabled
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold mb-1">MRP (₹) (Reference)</label>
                     <input
                       type="number"
                       value={item.mrp}
                       onChange={(e) => handleItemChange(index, 'mrp', e.target.value)}
-                      className="input-field text-sm bg-gray-200 cursor-not-allowed"
+                      className="input-field text-sm bg-gray-100 cursor-not-allowed"
                       step="0.01"
                       placeholder="Auto-filled"
                       disabled
@@ -239,7 +257,7 @@ const BillingForm = ({ onBillingComplete }) => {
                   <div>
                     <label className="block text-sm font-semibold mb-1">Total</label>
                     <div className="text-lg font-bold text-green-600 py-2">
-                      ₹{(item.quantity && item.mrp ? (parseInt(item.quantity) * parseFloat(item.mrp)).toFixed(2) : '0.00')}
+                      ₹{(item.quantity && item.selling_rate ? (parseInt(item.quantity) * parseFloat(item.selling_rate)).toFixed(2) : '0.00')}
                     </div>
                   </div>
 
@@ -269,9 +287,11 @@ const BillingForm = ({ onBillingComplete }) => {
 
       <div className="bg-sky-50 p-4 rounded-lg mb-6">
         <p className="text-gray-600 text-sm">
-          ✓ MRP is auto-populated from the selected batch<br/>
-          ✓ Quantity will be deducted from the selected batch only<br/>
-          ✓ Total amount will be calculated and stored by the system
+          ✓ Selling Rate is auto-populated from the selected batch (used for billing)<br/>
+          ✓ MRP is auto-populated from the selected batch (for invoice reference only)<br/>
+          ✓ Billing total calculated using Selling Rate ONLY<br/>
+          ✓ Quantity will be deducted from the selected batch<br/>
+          ✓ Cost Price is internal reference only (not shown here)
         </p>
       </div>
 

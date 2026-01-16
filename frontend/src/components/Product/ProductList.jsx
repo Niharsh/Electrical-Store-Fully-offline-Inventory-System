@@ -165,6 +165,10 @@ const ProductList = ({ onEdit, onDelete }) => {
                                     <div className="font-semibold">{batch.batch_number}</div>
                                     <div className="text-sm text-gray-600 mt-1">
                                       <span className="inline-block mr-3">MRP: ₹{parseFloat(batch.mrp).toFixed(2)}</span>
+                                      <span className="inline-block mr-3">Selling: ₹{parseFloat(batch.selling_rate).toFixed(2)}</span>
+                                      <span className="inline-block mr-3">Cost: ₹{parseFloat(batch.cost_price).toFixed(2)}</span>
+                                    </div>
+                                    <div className="text-sm text-gray-600 mt-1">
                                       <span className="inline-block mr-3">Qty: {batch.quantity} {product.unit}</span>
                                       {batch.expiry_date && (
                                         <span className="inline-block">Expiry: {formatDate(batch.expiry_date)}</span>

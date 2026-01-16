@@ -70,12 +70,16 @@ List all products with filtering support.
         {
           "batch_number": "LOT-2024-001",
           "mrp": "25.50",
+          "selling_rate": "25.00",
+          "cost_price": "18.00",
           "quantity": 100,
           "expiry_date": "2026-12-31"
         },
         {
           "batch_number": "LOT-2024-002",
           "mrp": "26.00",
+          "selling_rate": "25.50",
+          "cost_price": "18.50",
           "quantity": 50,
           "expiry_date": "2027-06-30"
         }
@@ -96,6 +100,8 @@ List all products with filtering support.
         {
           "batch_number": "SYR-2024-001",
           "mrp": "150.00",
+          "selling_rate": "145.00",
+          "cost_price": "110.00",
           "quantity": 50,
           "expiry_date": "2026-06-30"
         }
@@ -109,12 +115,15 @@ List all products with filtering support.
 
 **Notes**:
 - `product_type` is one of: tablet, syrup, powder, cream, diaper, condom, sachet (extensible)
-- **`batches` array**: Each product has one or more batches with independent batch numbers, MRPs, quantities, and expiry dates
+- **`batches` array**: Each product has one or more batches with independent batch numbers, three price points, quantities, and expiry dates
 - Each batch contains:
   - `batch_number` (string, unique per product): Manufacturer batch identifier (e.g., LOT-2024-001)
-  - `mrp` (numeric, decimal): Manufacturing Recommended Price for this batch
+  - `mrp` (numeric, decimal): Maximum Retail Price - printed on product by manufacturer (for display/reference only)
+  - `selling_rate` (numeric, decimal): Selling price - the price at which shopkeeper sells to customer (USED FOR BILLING ONLY)
+  - `cost_price` (numeric, decimal): Cost price - the price at which shopkeeper bought the product (internal reference only, NOT shown in billing)
   - `quantity` (numeric): Available quantity for this batch
   - `expiry_date` (date, format YYYY-MM-DD): Batch expiry date
+- **Important**: Billing calculations MUST use ONLY `selling_rate`, NOT `mrp`
 - Total stock for a product is the sum of all batch quantities
 - `unit` indicates the unit of sale (pc, bottle, gm, ml, etc.) - flexible per product
 - Pagination is handled by DRF defaults
@@ -139,6 +148,8 @@ Create a new product with batches.
     {
       "batch_number": "LOT-2024-001",
       "mrp": "25.50",
+      "selling_rate": "25.00",
+      "cost_price": "18.00",
       "quantity": 100,
       "expiry_date": "2026-12-31"
     }
@@ -161,6 +172,8 @@ Create a new product with batches.
     {
       "batch_number": "LOT-2024-001",
       "mrp": "25.50",
+      "selling_rate": "25.00",
+      "cost_price": "18.00",
       "quantity": 100,
       "expiry_date": "2026-12-31"
     }
@@ -177,7 +190,9 @@ Create a new product with batches.
 - `salt_composition` is optional, mainly for tablets/capsules (max 500 chars)
 - **`batches` is required, must contain at least one batch**:
   - `batch_number` is required, must be unique within this product (max 100 chars)
-  - `mrp` is required, must be >= 0 (Manufacturing Recommended Price)
+  - `mrp` is required, must be >= 0 (Maximum Retail Price - printed on product)
+  - `selling_rate` is required, must be >= 0 (Selling price - used for billing calculations)
+  - `cost_price` is required, must be >= 0 (Cost price - internal reference only)
   - `quantity` is required, must be >= 0
   - `expiry_date` is required, format: YYYY-MM-DD, must be today or in the future
 - Create product with all batch records in one transaction
@@ -203,12 +218,16 @@ Get a single product by ID with all batches.
     {
       "batch_number": "LOT-2024-001",
       "mrp": "25.50",
+      "selling_rate": "25.00",
+      "cost_price": "18.00",
       "quantity": 100,
       "expiry_date": "2026-12-31"
     },
     {
       "batch_number": "LOT-2024-002",
       "mrp": "26.00",
+      "selling_rate": "25.50",
+      "cost_price": "18.50",
       "quantity": 50,
       "expiry_date": "2027-06-30"
     }
@@ -491,12 +510,14 @@ Create a new invoice with batch-specific items.
       "product_id": 1,
       "batch_number": "LOT-2024-001",
       "quantity": 2,
+      "selling_rate": "25.00",
       "mrp": "25.50"
     },
     {
       "product_id": 2,
       "batch_number": "SYR-2024-001",
       "quantity": 1,
+      "selling_rate": "145.00",
       "mrp": "150.00"
     }
   ]
@@ -509,7 +530,9 @@ Create a new invoice with batch-specific items.
 - Validate quantities are > 0 and available in specified batch
 - Check batch stock availability
 - Deduct quantity from specified batch only (no cross-batch deductions)
-- Calculate `total_amount` from items (quantity × mrp per item)
+- Calculate `total_amount` from items (quantity × selling_rate per item, NOT mrp)
+- Store `selling_rate` for billing calculations and cost analysis
+- Store `mrp` for invoice display purposes only
 - Create invoice and all associated items in one transaction
 - Return full invoice with calculated total
 
@@ -528,8 +551,9 @@ Create a new invoice with batch-specific items.
       "product_name": "Aspirin 500mg",
       "batch_number": "LOT-2024-001",
       "quantity": 2,
+      "selling_rate": "25.00",
       "mrp": "25.50",
-      "subtotal": "51.00"
+      "subtotal": "50.00"
     },
     {
       "id": 2,
@@ -537,8 +561,9 @@ Create a new invoice with batch-specific items.
       "product_name": "Cough Syrup",
       "batch_number": "SYR-2024-001",
       "quantity": 1,
+      "selling_rate": "145.00",
       "mrp": "150.00",
-      "subtotal": "150.00"
+      "subtotal": "145.00"
     }
   ],
   "created_at": "2024-01-15T10:30:00Z",
@@ -549,9 +574,11 @@ Create a new invoice with batch-specific items.
 **Key Differences from Old Contract**:
 - Changed `product` to `product_id` (numeric)
 - Added `batch_number` (string): Must reference an existing batch for the product
-- Changed `unit_price` to `mrp` (numeric): Manufacturing Recommended Price from the selected batch
-- Subtotal calculation: `quantity × mrp`
-- Total calculation: Sum of all item subtotals
+- Changed `unit_price` to `selling_rate` (numeric): Actual selling price from the selected batch
+- Added `mrp` (numeric): For invoice display/reference purposes only
+- Subtotal calculation: `quantity × selling_rate` (NOT mrp)
+- Total calculation: Sum of all item subtotals using selling_rate
+- **CRITICAL**: All billing calculations MUST use `selling_rate`, never `mrp`
 
 ---
 
@@ -575,8 +602,9 @@ Get a single invoice with all items and batch information.
       "product_type": "tablet",
       "batch_number": "LOT-2024-001",
       "quantity": 2,
+      "selling_rate": "25.00",
       "mrp": "25.50",
-      "subtotal": "51.00"
+      "subtotal": "50.00"
     },
     {
       "id": 2,
@@ -585,8 +613,9 @@ Get a single invoice with all items and batch information.
       "product_type": "syrup",
       "batch_number": "SYR-2024-001",
       "quantity": 1,
+      "selling_rate": "145.00",
       "mrp": "150.00",
-      "subtotal": "150.00"
+      "subtotal": "145.00"
     }
   ],
   "created_at": "2024-01-15T10:30:00Z",
@@ -597,10 +626,12 @@ Get a single invoice with all items and batch information.
 **Notes**:
 - Include `product_name` and `product_type` for display and categorization
 - Include `batch_number` to trace which batch was used for invoice
-- Include `mrp` (MRP for that batch at time of invoice)
-- Include calculated `subtotal` for each item (quantity × mrp)
-- Include calculated `total_amount` (sum of all subtotals)
+- Include `selling_rate` (actual selling price used for billing at time of invoice)
+- Include `mrp` (MRP for reference on invoice only, NOT used for calculations)
+- Include calculated `subtotal` for each item (quantity × selling_rate, NOT mrp)
+- Include calculated `total_amount` (sum of all subtotals using selling_rate)
 - All these values are calculated and provided by backend
+- **IMPORTANT**: Cost price is never included in invoice responses
 
 ---
 

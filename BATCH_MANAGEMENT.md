@@ -2,9 +2,13 @@
 
 ## Overview
 
-The inventory system supports **multiple batches per product** with independent batch numbers, Manufacturing Recommended Prices (MRP), quantities, and expiry dates. This enables tracking pharmaceutical products by batch for:
+The inventory system supports **multiple batches per product** with **three independent price points** (MRP, Selling Rate, Cost Price) and batch-specific quantities and expiry dates. This enables tracking pharmaceutical products by batch for:
 
-- **Batch-specific pricing**: Different batches of the same product can have different MRPs
+- **Batch-specific pricing**: Different batches of the same product can have different prices
+- **Multi-price model**: 
+  - **MRP (Maximum Retail Price)**: For display/reference on invoices
+  - **Selling Rate**: The actual price used for ALL billing calculations
+  - **Cost Price**: Internal reference for profit analysis
 - **Inventory segregation**: Manage stock separately for each batch
 - **Expiry tracking**: Each batch has independent expiry dates
 - **Traceability**: Invoices link to specific batches for compliance and recalls
@@ -15,7 +19,7 @@ The inventory system supports **multiple batches per product** with independent 
 
 ### Product Structure
 
-Products no longer have a single `price` and `quantity`. Instead, pricing and inventory are managed at the **batch level**:
+Products no longer have a single `price` and `quantity`. Instead, pricing and inventory are managed at the **batch level** with **three independent prices per batch**:
 
 ```javascript
 {
@@ -31,12 +35,16 @@ Products no longer have a single `price` and `quantity`. Instead, pricing and in
     {
       "batch_number": "LOT-2024-001",
       "mrp": 25.50,
+      "selling_rate": 25.00,
+      "cost_price": 18.00,
       "quantity": 100,
       "expiry_date": "2026-12-31"
     },
     {
       "batch_number": "LOT-2024-002",
       "mrp": 26.00,
+      "selling_rate": 25.50,
+      "cost_price": 19.00,
       "quantity": 50,
       "expiry_date": "2027-06-30"
     }
@@ -44,12 +52,24 @@ Products no longer have a single `price` and `quantity`. Instead, pricing and in
 }
 ```
 
+### Three-Price Model
+
+Each batch has three independent prices:
+
+| Price | Field | Purpose | Visibility | Used In |
+|-------|-------|---------|------------|----------|
+| **MRP** | `mrp` | Maximum Retail Price | Display on invoice (reference) | Invoice printing, product display |
+| **Selling Rate** | `selling_rate` | Actual selling price to customers | Billing screens, auto-filled | **ALL billing calculations** |
+| **Cost Price** | `cost_price` | Internal cost for profit analysis | Inventory/reports only | Profit margin calculation (NOT billing) |
+
 ### Key Concepts
 
 **Batch (Lot)**: A shipment or manufacturing unit of a product
 - **batch_number** (string, unique per product): Manufacturer identifier (e.g., "LOT-2024-001")
-- **mrp** (numeric, decimal): Manufacturing Recommended Price for this batch
-- **quantity** (numeric, integer): Available stock of this batch
+- **mrp** (decimal): Manufacturing Recommended Price (reference, display only)
+- **selling_rate** (decimal): Actual selling price (USED FOR ALL CALCULATIONS)
+- **cost_price** (decimal): Cost to acquire (internal reference only)
+- **quantity** (integer): Available stock of this batch
 - **expiry_date** (date, format YYYY-MM-DD): When this batch expires
 
 **Product Total Stock**: Sum of all batch quantities
@@ -63,6 +83,44 @@ MRP Min = Min(batch.mrp for all batches)
 MRP Max = Max(batch.mrp for all batches)
 ```
 
+**Cost Price (Internal)**: NOT aggregated or shown, only visible per-batch in inventory
+
+---
+
+## Price Usage Rules (CRITICAL)
+
+### ✅ Selling Rate (Used for Billing)
+```
+Invoice Subtotal = Quantity × Selling Rate (NOT MRP)
+
+Example:
+- MRP: ₹100
+- Selling Rate: ₹90 (bulk discount)
+- Cost Price: ₹70
+- Quantity: 5
+
+Invoice Total = 5 × ₹90 = ₹450 (NOT 5 × ₹100 = ₹500)
+Profit = (₹90 - ₹70) × 5 = ₹100
+```
+
+### ✅ MRP (Reference/Display)
+```
+Shown on invoice as:
+"Selling Rate: ₹90 | MRP: ₹100 (Reference)"
+
+MRP indicates the official maximum price but actual billing uses Selling Rate.
+```
+
+### ✅ Cost Price (Internal Only)
+```
+Used for profit analysis:
+Profit Margin = (Selling Rate - Cost Price) / Selling Rate
+Profit Margin = (₹90 - ₹70) / ₹90 = 22.2%
+
+NOT shown in any billing screens or invoices.
+NEVER used in customer-facing calculations.
+```
+
 ---
 
 ## Frontend Behavior
@@ -70,15 +128,18 @@ MRP Max = Max(batch.mrp for all batches)
 ### Product Creation (AddProductForm)
 
 1. User enters product details (name, type, generic_name, manufacturer, etc.)
-2. User adds one or more batches:
+2. User adds one or more batches with **three independent prices**:
    - Batch number (required, must be unique within product)
    - MRP (required, must be > 0)
+   - Selling Rate (required, must be > 0)
+   - Cost Price (required, must be >= 0)
    - Quantity (required, must be >= 0)
    - Expiry date (required, must be today or future)
 3. Form validates:
    - ✅ At least one batch required
    - ✅ No duplicate batch numbers
    - ✅ All batch fields filled
+   - ✅ MRP > 0, Selling Rate > 0, Cost Price >= 0
 4. Submit creates product with all batches in one request
 
 **Example Form Input**:
@@ -92,6 +153,8 @@ MRP Max = Max(batch.mrp for all batches)
     {
       "batch_number": "LOT-2024-001",
       "mrp": 25.50,
+      "selling_rate": 25.00,
+      "cost_price": 18.00,
       "quantity": 100,
       "expiry_date": "2026-12-31"
     }
@@ -108,7 +171,7 @@ For each product, the list shows:
 - **Batch Count**: "2 batches" (clickable badge)
 - **Expandable Details**: Click to see all batches with:
   - Batch number
-  - MRP for that batch
+  - **All three prices**: MRP | Selling Rate | Cost Price
   - Quantity for that batch
   - Expiry date
 
@@ -119,8 +182,8 @@ Generic: Acetylsalicylic Acid
 Total Qty: 150 | MRP: ₹25.50 - ₹26.00 | [Batches: 2]
 
 [Click to expand batches]
-├─ LOT-2024-001: MRP ₹25.50 | Qty 100 | Expires 2026-12-31
-└─ LOT-2024-002: MRP ₹26.00 | Qty 50 | Expires 2027-06-30
+├─ LOT-2024-001: MRP ₹25.50 | Selling ₹25.00 | Cost ₹18.00 | Qty 100 | Expires 2026-12-31
+└─ LOT-2024-002: MRP ₹26.00 | Selling ₹25.50 | Cost ₹19.00 | Qty 50 | Expires 2027-06-30
 ```
 
 ### Billing (BillingForm)
@@ -131,10 +194,13 @@ Total Qty: 150 | MRP: ₹25.50 - ₹26.00 | [Batches: 2]
    ├─ LOT-2024-001 (Qty: 100)
    └─ LOT-2024-002 (Qty: 50)
    ```
-3. **Selecting batch auto-fills MRP** from that batch
+3. **Selecting batch auto-fills BOTH prices**:
+   - **Selling Rate field** (primary, disabled): ₹25.00 (used for calculations)
+   - **MRP field** (reference, lighter gray, disabled): ₹25.50
+   - **Cost Price**: Hidden (internal only)
 4. User enters quantity (validated against selected batch's available quantity)
-5. **Total calculation**: Quantity × MRP (shown in real-time)
-6. Submit creates invoice with batch_number and mrp preserved
+5. **Total calculation uses ONLY Selling Rate**: Quantity × Selling Rate (shown in bold green)
+6. Submit creates invoice with batch_number, selling_rate, and mrp preserved
 
 **Example Invoice Item**:
 ```javascript
@@ -142,8 +208,16 @@ Total Qty: 150 | MRP: ₹25.50 - ₹26.00 | [Batches: 2]
   "product_id": 1,
   "batch_number": "LOT-2024-001",
   "quantity": 5,
+  "selling_rate": 25.00,
   "mrp": 25.50
 }
+```
+
+**Billing Screen Info Box**:
+```
+ℹ️ Selling Rate (₹25.00) is used for billing calculations
+   MRP (₹25.50) is shown for reference only
+   Cost Price is internal only (not visible in billing)
 ```
 
 ---

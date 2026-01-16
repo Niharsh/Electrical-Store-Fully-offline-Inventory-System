@@ -20,6 +20,8 @@ const AddProductForm = ({ onProductAdded }) => {
   const [batchForm, setBatchForm] = useState({
     batch_number: '',
     mrp: '',
+    selling_rate: '',
+    cost_price: '',
     quantity: '',
     expiry_date: '',
   });
@@ -68,6 +70,14 @@ const AddProductForm = ({ onProductAdded }) => {
       setFormError('Valid MRP is required');
       return;
     }
+    if (!batchForm.selling_rate || parseFloat(batchForm.selling_rate) <= 0) {
+      setFormError('Valid Selling Rate is required');
+      return;
+    }
+    if (!batchForm.cost_price || parseFloat(batchForm.cost_price) < 0) {
+      setFormError('Valid Cost Price is required');
+      return;
+    }
     if (!batchForm.quantity || parseInt(batchForm.quantity) <= 0) {
       setFormError('Quantity must be greater than 0');
       return;
@@ -83,6 +93,8 @@ const AddProductForm = ({ onProductAdded }) => {
     const newBatch = {
       batch_number: batchForm.batch_number.trim(),
       mrp: parseFloat(batchForm.mrp),
+      selling_rate: parseFloat(batchForm.selling_rate),
+      cost_price: parseFloat(batchForm.cost_price),
       quantity: parseInt(batchForm.quantity),
       expiry_date: batchForm.expiry_date || null,
     };
@@ -96,6 +108,8 @@ const AddProductForm = ({ onProductAdded }) => {
     setBatchForm({
       batch_number: '',
       mrp: '',
+      selling_rate: '',
+      cost_price: '',
       quantity: '',
       expiry_date: '',
     });
@@ -277,7 +291,7 @@ const AddProductForm = ({ onProductAdded }) => {
         {/* Batch Form */}
         <div className="card bg-blue-50 mb-6">
           <h4 className="font-semibold mb-4">New Batch</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
             <div>
               <label className="block font-semibold mb-2">Batch Number *</label>
               <input
@@ -300,7 +314,35 @@ const AddProductForm = ({ onProductAdded }) => {
                 className="input-field"
                 step="0.01"
                 min="0"
-                placeholder="0.00"
+                placeholder="Printed on product"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold mb-2">Selling Rate (₹) *</label>
+              <input
+                type="number"
+                name="selling_rate"
+                value={batchForm.selling_rate}
+                onChange={handleBatchChange}
+                className="input-field"
+                step="0.01"
+                min="0"
+                placeholder="Your selling price"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold mb-2">Cost Price (₹) *</label>
+              <input
+                type="number"
+                name="cost_price"
+                value={batchForm.cost_price}
+                onChange={handleBatchChange}
+                className="input-field"
+                step="0.01"
+                min="0"
+                placeholder="Purchase price"
               />
             </div>
 
@@ -351,7 +393,10 @@ const AddProductForm = ({ onProductAdded }) => {
                   <div>
                     <div className="font-semibold">{batch.batch_number}</div>
                     <div className="text-sm text-gray-600">
-                      MRP: ₹{parseFloat(batch.mrp).toFixed(2)} | Qty: {batch.quantity} {formData.unit}
+                      MRP: ₹{parseFloat(batch.mrp).toFixed(2)} | Selling: ₹{parseFloat(batch.selling_rate).toFixed(2)} | Cost: ₹{parseFloat(batch.cost_price).toFixed(2)}
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      Qty: {batch.quantity} {formData.unit}
                       {batch.expiry_date && ` | Expiry: ${new Date(batch.expiry_date).toLocaleDateString()}`}
                     </div>
                   </div>

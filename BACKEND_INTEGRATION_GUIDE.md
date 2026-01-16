@@ -30,6 +30,94 @@ This guide explains how to implement the Django REST Framework backend for a **G
 
 ---
 
+## Three-Price Model: MRP, Selling Rate, Cost Price
+
+The inventory system supports three distinct price types per product batch:
+
+### Price Definitions
+
+| Price | Field | Purpose | Used For |
+|-------|-------|---------|----------|
+| **MRP** | `mrp` | Maximum Retail Price | Display on invoice, printed on packaging (reference only) |
+| **Selling Rate** | `selling_rate` | Actual selling price to customers | **ALL billing calculations, invoice subtotals** |
+| **Cost Price** | `cost_price` | Internal cost for profit analysis | Profit analysis, internal reporting (NOT in billing) |
+
+### Critical Rules
+
+⚠️ **ENFORCEMENT RULES:**
+1. **Selling Rate is the ONLY price used for invoice calculations**
+   - Example: If MRP=₹100, Selling Rate=₹90, Cost Price=₹70
+   - Invoice for 5 units = 5 × ₹90 = ₹450 (NOT 5 × ₹100)
+
+2. **MRP is for display/reference only**
+   - Shown on invoice as additional information
+   - Not used in any calculations
+   - Allows for bulk discounts where Selling Rate < MRP
+
+3. **Cost Price is INTERNAL ONLY**
+   - NEVER appears in billing screens or invoice API responses
+   - Only visible in inventory/product management
+   - Used for profit analysis: Profit = (Selling Rate - Cost Price) × Quantity
+
+4. **All three prices must be positive decimals**
+   - MRP >= 0
+   - Selling Rate >= 0
+   - Cost Price >= 0
+   - No price overwriting between batches (each batch has independent prices)
+
+### Data Model
+
+```python
+class Batch(models.Model):
+    product = ForeignKey(Product)
+    batch_number = CharField(max_length=100)           # LOT-2024-001
+    mrp = DecimalField(max_digits=10, decimal_places=2)           # ₹100.00
+    selling_rate = DecimalField(max_digits=10, decimal_places=2)  # ₹90.00 (USED FOR BILLING)
+    cost_price = DecimalField(max_digits=10, decimal_places=2)    # ₹70.00 (INTERNAL ONLY)
+    quantity = PositiveIntegerField()
+    expiry_date = DateField()
+```
+
+### Invoice Calculations
+
+All invoice calculations use ONLY `selling_rate`:
+
+```python
+# InvoiceItem.get_subtotal()
+def get_subtotal(self):
+    return self.quantity * self.selling_rate  # NOT mrp
+
+# Invoice.calculate_total()
+def calculate_total(self):
+    return sum(item.get_subtotal() for item in self.items.all())
+```
+
+### API Response Example
+
+```json
+{
+  "id": 123,
+  "customer_name": "John's Pharmacy",
+  "total_amount": "450.00",
+  "items": [
+    {
+      "id": 1,
+      "product_id": 5,
+      "product_name": "Aspirin 500mg",
+      "batch_number": "LOT-2024-001",
+      "quantity": 5,
+      "selling_rate": "90.00",
+      "mrp": "100.00",
+      "subtotal": "450.00"
+    }
+  ]
+}
+```
+
+Note: `cost_price` (₹70.00) is NOT included in any invoice response.
+
+---
+
 ## Implementation Checklist
 
 ### Step 1: Models
@@ -126,7 +214,7 @@ class Product(models.Model):
 
 
 class Batch(models.Model):
-    """Batch/Lot number for tracking inventory, MRP, and expiry per batch"""
+    """Batch/Lot number for tracking inventory, pricing, and expiry per batch"""
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='batches')
     batch_number = models.CharField(
         max_length=100,
@@ -135,7 +223,17 @@ class Batch(models.Model):
     mrp = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        help_text="Manufacturing Recommended Price for this batch"
+        help_text="Maximum Retail Price - printed on product by manufacturer (for display/reference only)"
+    )
+    selling_rate = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text="Selling Rate - price at which shopkeeper sells to customer (USED FOR BILLING ONLY)"
+    )
+    cost_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text="Cost Price - purchase price paid by shopkeeper (internal reference only, NOT shown in billing)"
     )
     quantity = models.PositiveIntegerField(
         help_text="Available quantity for this batch"
@@ -155,7 +253,7 @@ class Batch(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.batch_number} - {self.product.name} (₹{self.mrp})"
+        return f"{self.batch_number} - {self.product.name} (MRP: ₹{self.mrp} | Selling: ₹{self.selling_rate})"
 
 
 class Invoice(models.Model):
@@ -197,10 +295,17 @@ class InvoiceItem(models.Model):
     quantity = models.PositiveIntegerField(
         help_text="Quantity sold from this batch"
     )
+    selling_rate = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text="Selling Rate at time of invoice (USED FOR CALCULATIONS AND COST ANALYSIS)"
+    )
     mrp = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        help_text="Manufacturing Recommended Price at time of invoice"
+        help_text="Maximum Retail Price at time of invoice (for invoice display/reference only)",
+        null=True,
+        blank=True
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -213,11 +318,11 @@ class InvoiceItem(models.Model):
         ]
 
     def __str__(self):
-        return f"Invoice #{self.invoice.id} - {self.product.name} (Batch: {self.batch_number})"
+        return f"Invoice #{self.invoice.id} - {self.product.name} x{self.quantity} @ ₹{self.selling_rate} (Batch: {self.batch_number})"
 
     def get_subtotal(self):
-        """Calculate subtotal for this item: quantity × mrp"""
-        return self.quantity * self.mrp
+        """Calculate subtotal using ONLY selling_rate (not mrp)"""
+        return self.quantity * self.selling_rate
 
     def save(self, *args, **kwargs):
         """Update parent invoice total after saving item"""
@@ -271,11 +376,11 @@ class InvoiceItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = InvoiceItem
-        fields = ['id', 'product_id', 'product_name', 'product_type', 'batch_number', 'quantity', 'mrp', 'subtotal']
+        fields = ['id', 'product_id', 'product_name', 'product_type', 'batch_number', 'quantity', 'selling_rate', 'mrp', 'subtotal']
         read_only_fields = ['product_id', 'product_name', 'product_type']
 
     def get_subtotal(self, obj):
-        """Calculate and return subtotal: quantity × mrp"""
+        """Calculate and return subtotal using ONLY selling_rate (not mrp)"""
         return str(obj.get_subtotal())
 
 
@@ -283,10 +388,10 @@ class InvoiceItemCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating invoice items (accepts product_id and batch_number)"""
     class Meta:
         model = InvoiceItem
-        fields = ['product', 'batch_number', 'quantity', 'mrp']
+        fields = ['product', 'batch_number', 'quantity', 'selling_rate', 'mrp']
     
     def validate(self, data):
-        """Validate batch exists for product and has sufficient quantity"""
+        """Validate batch exists for product, has sufficient quantity, and auto-fill prices"""
         product = data['product']
         batch_number = data['batch_number']
         quantity = data['quantity']
@@ -303,7 +408,8 @@ class InvoiceItemCreateSerializer(serializers.ModelSerializer):
                 f"Insufficient quantity in batch {batch_number}. Available: {batch.quantity}, Requested: {quantity}"
             )
         
-        # Auto-fill MRP from batch
+        # Auto-fill selling_rate and mrp from batch
+        data['selling_rate'] = batch.selling_rate
         data['mrp'] = batch.mrp
         
         return data
