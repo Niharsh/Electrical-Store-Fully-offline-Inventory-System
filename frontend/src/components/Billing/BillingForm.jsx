@@ -16,18 +16,39 @@ const BillingForm = ({ onBillingComplete }) => {
   });
 
   const handleAddItem = () => {
-    setBillItems([...billItems, { product: '', quantity: '', unit_price: '' }]);
+    setBillItems([...billItems, { 
+      product_id: '', 
+      batch_number: '',
+      quantity: '', 
+      mrp: '' 
+    }]);
   };
 
   const handleItemChange = (index, field, value) => {
     const updatedItems = [...billItems];
     updatedItems[index][field] = value;
 
-    // Auto-fill unit_price if product is selected
-    if (field === 'product' && value) {
+    // Auto-fill batches and MRP if product is selected
+    if (field === 'product_id' && value) {
       const selectedProduct = products.find(p => p.id === parseInt(value));
-      if (selectedProduct) {
-        updatedItems[index].unit_price = selectedProduct.price;
+      if (selectedProduct && selectedProduct.batches && selectedProduct.batches.length > 0) {
+        // Set first batch as default
+        updatedItems[index].batch_number = selectedProduct.batches[0].batch_number;
+        updatedItems[index].mrp = selectedProduct.batches[0].mrp;
+      } else {
+        updatedItems[index].batch_number = '';
+        updatedItems[index].mrp = '';
+      }
+    }
+
+    // Auto-fill MRP when batch is selected
+    if (field === 'batch_number' && updatedItems[index].product_id) {
+      const selectedProduct = products.find(p => p.id === parseInt(updatedItems[index].product_id));
+      if (selectedProduct && selectedProduct.batches) {
+        const selectedBatch = selectedProduct.batches.find(b => b.batch_number === value);
+        if (selectedBatch) {
+          updatedItems[index].mrp = selectedBatch.mrp;
+        }
       }
     }
 
@@ -55,26 +76,21 @@ const BillingForm = ({ onBillingComplete }) => {
       // Validate all items have required fields
       for (let i = 0; i < billItems.length; i++) {
         const item = billItems[i];
-        if (!item.product || !item.quantity || !item.unit_price) {
-          throw new Error(`Item ${i + 1} is missing required fields`);
+        if (!item.product_id || !item.batch_number || !item.quantity || !item.mrp) {
+          throw new Error(`Item ${i + 1} is missing required fields (product, batch, quantity, MRP)`);
         }
       }
 
-      // Prepare invoice data - pass raw user input to backend
-      // Backend will:
-      // - Validate product IDs exist
-      // - Validate quantities are positive
-      // - Check stock (if applicable)
-      // - Calculate total_amount
-      // - Create invoice atomically
+      // Prepare invoice data with batch and MRP information
       const invoiceData = {
         customer_name: formData.customer_name,
         customer_phone: formData.customer_phone || null,
         notes: formData.notes,
         items: billItems.map(item => ({
-          product: parseInt(item.product),
+          product_id: parseInt(item.product_id),
+          batch_number: item.batch_number,
           quantity: parseInt(item.quantity),
-          unit_price: item.unit_price,
+          mrp: parseFloat(item.mrp),
         })),
       };
 
@@ -150,76 +166,95 @@ const BillingForm = ({ onBillingComplete }) => {
           <p className="text-gray-600 mb-4">No items added. Click "Add Item" to start.</p>
         ) : (
           <div className="space-y-4 mb-4">
-            {billItems.map((item, index) => (
-              <div key={index} className="bg-gray-50 p-4 rounded-lg grid grid-cols-1 md:grid-cols-5 gap-3">
-                <div>
-                  <label className="block text-sm font-semibold mb-1">Product *</label>
-                  <select
-                    value={item.product}
-                    onChange={(e) => handleItemChange(index, 'product', e.target.value)}
-                    className="input-field text-sm"
-                  >
-                    <option value="">Select product</option>
-                    {products.map(p => {
-                      const typeDisplay = p.product_type
-                        .split('_')
-                        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-                        .join(' ');
-                      return (
-                        <option key={p.id} value={p.id}>
-                          {p.name} ({typeDisplay}) - ₹{p.price}
+            {billItems.map((item, index) => {
+              const selectedProduct = products.find(p => p.id === parseInt(item.product_id));
+              const availableBatches = selectedProduct?.batches || [];
+
+              return (
+                <div key={index} className="bg-gray-50 p-4 rounded-lg grid grid-cols-1 md:grid-cols-6 gap-3">
+                  <div>
+                    <label className="block text-sm font-semibold mb-1">Product *</label>
+                    <select
+                      value={item.product_id}
+                      onChange={(e) => handleItemChange(index, 'product_id', e.target.value)}
+                      className="input-field text-sm"
+                    >
+                      <option value="">Select product</option>
+                      {products.map(p => {
+                        const typeDisplay = p.product_type
+                          .split('_')
+                          .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+                          .join(' ');
+                        return (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({typeDisplay})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold mb-1">Batch *</label>
+                    <select
+                      value={item.batch_number}
+                      onChange={(e) => handleItemChange(index, 'batch_number', e.target.value)}
+                      className="input-field text-sm"
+                      disabled={!selectedProduct || availableBatches.length === 0}
+                    >
+                      <option value="">Select batch</option>
+                      {availableBatches.map((batch, bIdx) => (
+                        <option key={bIdx} value={batch.batch_number}>
+                          {batch.batch_number} (Qty: {batch.quantity})
                         </option>
-                      );
-                    })}
-                  </select>
-                </div>
+                      ))}
+                    </select>
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-semibold mb-1">Type</label>
-                  <input
-                    type="text"
-                    value={item.product ? (products.find(p => p.id === parseInt(item.product))?.product_type || '').split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : ''}
-                    className="input-field text-sm bg-gray-200 cursor-not-allowed"
-                    disabled
-                    placeholder="Type"
-                  />
-                </div>
+                  <div>
+                    <label className="block text-sm font-semibold mb-1">Quantity *</label>
+                    <input
+                      type="number"
+                      value={item.quantity}
+                      onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                      className="input-field text-sm"
+                      min="1"
+                      placeholder="Qty"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-semibold mb-1">Quantity *</label>
-                  <input
-                    type="number"
-                    value={item.quantity}
-                    onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
-                    className="input-field text-sm"
-                    min="1"
-                    placeholder="Qty"
-                  />
-                </div>
+                  <div>
+                    <label className="block text-sm font-semibold mb-1">MRP (₹) *</label>
+                    <input
+                      type="number"
+                      value={item.mrp}
+                      onChange={(e) => handleItemChange(index, 'mrp', e.target.value)}
+                      className="input-field text-sm bg-gray-200 cursor-not-allowed"
+                      step="0.01"
+                      placeholder="Auto-filled"
+                      disabled
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-semibold mb-1">Unit Price *</label>
-                  <input
-                    type="number"
-                    value={item.unit_price}
-                    onChange={(e) => handleItemChange(index, 'unit_price', e.target.value)}
-                    className="input-field text-sm"
-                    step="0.01"
-                    placeholder="Price"
-                  />
-                </div>
+                  <div>
+                    <label className="block text-sm font-semibold mb-1">Total</label>
+                    <div className="text-lg font-bold text-green-600 py-2">
+                      ₹{(item.quantity && item.mrp ? (parseInt(item.quantity) * parseFloat(item.mrp)).toFixed(2) : '0.00')}
+                    </div>
+                  </div>
 
-                <div className="flex items-end">
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveItem(index)}
-                    className="btn-danger w-full text-sm py-2"
-                  >
-                    Remove
-                  </button>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveItem(index)}
+                      className="btn-danger w-full text-sm py-2"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -234,7 +269,9 @@ const BillingForm = ({ onBillingComplete }) => {
 
       <div className="bg-sky-50 p-4 rounded-lg mb-6">
         <p className="text-gray-600 text-sm">
-          Total amount will be calculated by the system when you create the invoice.
+          ✓ MRP is auto-populated from the selected batch<br/>
+          ✓ Quantity will be deducted from the selected batch only<br/>
+          ✓ Total amount will be calculated and stored by the system
         </p>
       </div>
 

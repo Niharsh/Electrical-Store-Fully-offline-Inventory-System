@@ -64,11 +64,22 @@ List all products with filtering support.
       "generic_name": "Acetylsalicylic Acid",
       "manufacturer": "Pharma Ltd",
       "salt_composition": "Paracetamol 500mg",
-      "price": "25.50",
-      "quantity": 150,
       "unit": "pc",
-      "expiry_date": "2026-12-31",
       "description": "Pain reliever and fever reducer",
+      "batches": [
+        {
+          "batch_number": "LOT-2024-001",
+          "mrp": "25.50",
+          "quantity": 100,
+          "expiry_date": "2026-12-31"
+        },
+        {
+          "batch_number": "LOT-2024-002",
+          "mrp": "26.00",
+          "quantity": 50,
+          "expiry_date": "2027-06-30"
+        }
+      ],
       "created_at": "2024-01-15T10:30:00Z",
       "updated_at": "2024-01-15T10:30:00Z"
     },
@@ -79,11 +90,16 @@ List all products with filtering support.
       "generic_name": "Dextromethorphan",
       "manufacturer": "Pharma Ltd",
       "salt_composition": null,
-      "price": "150.00",
-      "quantity": 50,
       "unit": "bottle",
-      "expiry_date": "2026-06-30",
       "description": "Cough suppressant syrup",
+      "batches": [
+        {
+          "batch_number": "SYR-2024-001",
+          "mrp": "150.00",
+          "quantity": 50,
+          "expiry_date": "2026-06-30"
+        }
+      ],
       "created_at": "2024-01-15T10:30:00Z",
       "updated_at": "2024-01-15T10:30:00Z"
     }
@@ -93,17 +109,21 @@ List all products with filtering support.
 
 **Notes**:
 - `product_type` is one of: tablet, syrup, powder, cream, diaper, condom, sachet (extensible)
-- `price` is the selling price (used for display, not calculations)
-- `quantity` is current stock level
+- **`batches` array**: Each product has one or more batches with independent batch numbers, MRPs, quantities, and expiry dates
+- Each batch contains:
+  - `batch_number` (string, unique per product): Manufacturer batch identifier (e.g., LOT-2024-001)
+  - `mrp` (numeric, decimal): Manufacturing Recommended Price for this batch
+  - `quantity` (numeric): Available quantity for this batch
+  - `expiry_date` (date, format YYYY-MM-DD): Batch expiry date
+- Total stock for a product is the sum of all batch quantities
 - `unit` indicates the unit of sale (pc, bottle, gm, ml, etc.) - flexible per product
-- `expiry_date` is mandatory, format: YYYY-MM-DD (e.g., 2026-12-31)
 - Pagination is handled by DRF defaults
 
 ---
 
 ### POST /products/
 
-Create a new product.
+Create a new product with batches.
 
 **Request Body**:
 ```json
@@ -113,11 +133,16 @@ Create a new product.
   "generic_name": "Acetylsalicylic Acid",
   "manufacturer": "Pharma Ltd",
   "salt_composition": "Paracetamol 500mg",
-  "price": "25.50",
-  "quantity": 100,
   "unit": "pc",
-  "expiry_date": "2026-12-31",
-  "description": "Pain reliever"
+  "description": "Pain reliever",
+  "batches": [
+    {
+      "batch_number": "LOT-2024-001",
+      "mrp": "25.50",
+      "quantity": 100,
+      "expiry_date": "2026-12-31"
+    }
+  ]
 }
 ```
 
@@ -130,31 +155,38 @@ Create a new product.
   "generic_name": "Acetylsalicylic Acid",
   "manufacturer": "Pharma Ltd",
   "salt_composition": "Paracetamol 500mg",
-  "price": "25.50",
-  "quantity": 100,
   "unit": "pc",
-  "expiry_date": "2026-12-31",
   "description": "Pain reliever",
+  "batches": [
+    {
+      "batch_number": "LOT-2024-001",
+      "mrp": "25.50",
+      "quantity": 100,
+      "expiry_date": "2026-12-31"
+    }
+  ],
   "created_at": "2024-01-15T10:30:00Z",
   "updated_at": "2024-01-15T10:30:00Z"
 }
-```
 ```
 
 **Validation** (Backend):
 - `name` is required, unique, max 255 chars
 - `product_type` is required, must be one of: tablet, syrup, powder, cream, diaper, condom, sachet
-- `price` must be >= 0
-- `quantity` must be >= 0
 - `unit` should be flexible per product (pc, bottle, gm, ml, etc.)
-- `expiry_date` is required, format: YYYY-MM-DD, must be today or in the future
 - `salt_composition` is optional, mainly for tablets/capsules (max 500 chars)
+- **`batches` is required, must contain at least one batch**:
+  - `batch_number` is required, must be unique within this product (max 100 chars)
+  - `mrp` is required, must be >= 0 (Manufacturing Recommended Price)
+  - `quantity` is required, must be >= 0
+  - `expiry_date` is required, format: YYYY-MM-DD, must be today or in the future
+- Create product with all batch records in one transaction
 
 ---
 
 ### GET /products/{id}/
 
-Get a single product by ID.
+Get a single product by ID with all batches.
 
 **Expected Response**: 200 OK
 ```json
@@ -165,10 +197,22 @@ Get a single product by ID.
   "generic_name": "Acetylsalicylic Acid",
   "manufacturer": "Pharma Ltd",
   "salt_composition": "Paracetamol 500mg",
-  "price": "25.50",
-  "quantity": 150,
   "unit": "pc",
   "description": "Pain reliever",
+  "batches": [
+    {
+      "batch_number": "LOT-2024-001",
+      "mrp": "25.50",
+      "quantity": 100,
+      "expiry_date": "2026-12-31"
+    },
+    {
+      "batch_number": "LOT-2024-002",
+      "mrp": "26.00",
+      "quantity": 50,
+      "expiry_date": "2027-06-30"
+    }
+  ],
   "created_at": "2024-01-15T10:30:00Z",
   "updated_at": "2024-01-15T10:30:00Z"
 }
@@ -178,19 +222,30 @@ Get a single product by ID.
 
 ### PATCH /products/{id}/
 
-Update a product.
+Update a product and/or add/update batches.
 
 **Request Body** (all fields optional):
 ```json
 {
   "name": "Aspirin 500mg",
-  "price": "26.00",
-  "quantity": 120
+  "description": "Updated description",
+  "batches": [
+    {
+      "batch_number": "LOT-2024-003",
+      "mrp": "27.00",
+      "quantity": 75,
+      "expiry_date": "2027-12-31"
+    }
+  ]
 }
 ```
 
 **Expected Response**: 200 OK
-Same as GET response with updated fields.
+Same as GET response with updated fields and all batches.
+
+**Notes**:
+- Batch updates are handled as additions or replacements (backend determines strategy)
+- To remove a batch, provide empty batches array or specific batch removal mechanism (TBD based on backend implementation)
 
 ---
 
@@ -423,7 +478,7 @@ List all invoices.
 
 ### POST /invoices/
 
-Create a new invoice.
+Create a new invoice with batch-specific items.
 
 **Request Body**:
 ```json
@@ -433,14 +488,16 @@ Create a new invoice.
   "notes": "Regular customer",
   "items": [
     {
-      "product": 1,
+      "product_id": 1,
+      "batch_number": "LOT-2024-001",
       "quantity": 2,
-      "unit_price": "25.50"
+      "mrp": "25.50"
     },
     {
-      "product": 2,
+      "product_id": 2,
+      "batch_number": "SYR-2024-001",
       "quantity": 1,
-      "unit_price": "100.00"
+      "mrp": "150.00"
     }
   ]
 }
@@ -448,9 +505,11 @@ Create a new invoice.
 
 **Backend Responsibilities**:
 - Validate product IDs exist
-- Validate quantities are > 0
-- Check stock availability (if applicable)
-- Calculate `total_amount` from items
+- Validate batch numbers exist for each product
+- Validate quantities are > 0 and available in specified batch
+- Check batch stock availability
+- Deduct quantity from specified batch only (no cross-batch deductions)
+- Calculate `total_amount` from items (quantity × mrp per item)
 - Create invoice and all associated items in one transaction
 - Return full invoice with calculated total
 
@@ -460,22 +519,26 @@ Create a new invoice.
   "id": 1,
   "customer_name": "John Doe",
   "customer_phone": "9876543210",
-  "total_amount": "151.00",
+  "total_amount": "351.00",
   "notes": "Regular customer",
   "items": [
     {
       "id": 1,
-      "product": 1,
+      "product_id": 1,
+      "product_name": "Aspirin 500mg",
+      "batch_number": "LOT-2024-001",
       "quantity": 2,
-      "unit_price": "25.50",
+      "mrp": "25.50",
       "subtotal": "51.00"
     },
     {
       "id": 2,
-      "product": 2,
+      "product_id": 2,
+      "product_name": "Cough Syrup",
+      "batch_number": "SYR-2024-001",
       "quantity": 1,
-      "unit_price": "100.00",
-      "subtotal": "100.00"
+      "mrp": "150.00",
+      "subtotal": "150.00"
     }
   ],
   "created_at": "2024-01-15T10:30:00Z",
@@ -483,11 +546,18 @@ Create a new invoice.
 }
 ```
 
+**Key Differences from Old Contract**:
+- Changed `product` to `product_id` (numeric)
+- Added `batch_number` (string): Must reference an existing batch for the product
+- Changed `unit_price` to `mrp` (numeric): Manufacturing Recommended Price from the selected batch
+- Subtotal calculation: `quantity × mrp`
+- Total calculation: Sum of all item subtotals
+
 ---
 
 ### GET /invoices/{id}/
 
-Get a single invoice with all items.
+Get a single invoice with all items and batch information.
 
 **Expected Response**:
 ```json
@@ -495,24 +565,28 @@ Get a single invoice with all items.
   "id": 1,
   "customer_name": "John Doe",
   "customer_phone": "9876543210",
-  "total_amount": "151.00",
+  "total_amount": "351.00",
   "notes": "Regular customer",
   "items": [
     {
       "id": 1,
-      "product": 1,
+      "product_id": 1,
       "product_name": "Aspirin 500mg",
+      "product_type": "tablet",
+      "batch_number": "LOT-2024-001",
       "quantity": 2,
-      "unit_price": "25.50",
+      "mrp": "25.50",
       "subtotal": "51.00"
     },
     {
       "id": 2,
-      "product": 2,
-      "product_name": "Paracetamol 500mg",
+      "product_id": 2,
+      "product_name": "Cough Syrup",
+      "product_type": "syrup",
+      "batch_number": "SYR-2024-001",
       "quantity": 1,
-      "unit_price": "100.00",
-      "subtotal": "100.00"
+      "mrp": "150.00",
+      "subtotal": "150.00"
     }
   ],
   "created_at": "2024-01-15T10:30:00Z",
@@ -521,10 +595,12 @@ Get a single invoice with all items.
 ```
 
 **Notes**:
-- Include `product_name` for display
-- Include `product_type` for product categorization in invoice items
-- Include calculated `subtotal` for each item
-- Include calculated `total_amount`
+- Include `product_name` and `product_type` for display and categorization
+- Include `batch_number` to trace which batch was used for invoice
+- Include `mrp` (MRP for that batch at time of invoice)
+- Include calculated `subtotal` for each item (quantity × mrp)
+- Include calculated `total_amount` (sum of all subtotals)
+- All these values are calculated and provided by backend
 
 ---
 
@@ -556,7 +632,7 @@ Delete an invoice.
 
 ### GET /invoice-items/
 
-List invoice items with filtering.
+List invoice items with batch information.
 
 **Query Parameters**:
 - `invoice` (optional): Filter by invoice ID
@@ -569,32 +645,38 @@ List invoice items with filtering.
     {
       "id": 1,
       "invoice": 1,
-      "product": 1,
+      "product_id": 1,
       "product_name": "Aspirin 500mg",
       "product_type": "tablet",
+      "batch_number": "LOT-2024-001",
       "quantity": 2,
-      "unit_price": "25.50",
+      "mrp": "25.50",
       "subtotal": "51.00"
     }
   ]
 }
 ```
 
+**Notes**:
+- `batch_number` indicates which batch was used for this invoice item
+- `mrp` is the Manufacturing Recommended Price from that batch
+- This allows tracing invoice items back to their source batch
+
 ---
 
 ### PATCH /invoice-items/{id}/
 
-Update an invoice item (quantity, unit_price).
+Update an invoice item (quantity only, batch and MRP are immutable).
 
 **Request Body**:
 ```json
 {
-  "quantity": 3,
-  "unit_price": "26.00"
+  "quantity": 3
 }
 ```
 
 **Backend Responsibility**:
+- Update quantity for the specific batch
 - Recalculate invoice `total_amount`
 - Return updated item with new `subtotal`
 
@@ -603,14 +685,19 @@ Update an invoice item (quantity, unit_price).
 {
   "id": 1,
   "invoice": 1,
-  "product": 1,
+  "product_id": 1,
   "product_name": "Aspirin 500mg",
   "product_type": "tablet",
+  "batch_number": "LOT-2024-001",
   "quantity": 3,
-  "unit_price": "26.00",
-  "subtotal": "78.00"
+  "mrp": "25.50",
+  "subtotal": "76.50"
 }
 ```
+
+**Notes**:
+- `batch_number` and `mrp` are immutable - they represent what was used at invoice creation time
+- To change batch or MRP, delete this item and add a new item with the desired batch
 
 ---
 

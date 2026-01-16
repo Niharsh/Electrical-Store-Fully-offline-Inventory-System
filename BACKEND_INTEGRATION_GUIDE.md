@@ -126,20 +126,36 @@ class Product(models.Model):
 
 
 class Batch(models.Model):
-    """Batch/Lot for tracking expiry and manufacturing info"""
+    """Batch/Lot number for tracking inventory, MRP, and expiry per batch"""
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='batches')
-    batch_number = models.CharField(max_length=100, unique=True)
-    quantity = models.PositiveIntegerField()
-    expiry_date = models.DateField()
-    manufactured_date = models.DateField()
-    price = models.DecimalField(max_digits=10, decimal_places=2)
+    batch_number = models.CharField(
+        max_length=100,
+        help_text="Manufacturer batch number (e.g., LOT-2024-001). Must be unique per product."
+    )
+    mrp = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text="Manufacturing Recommended Price for this batch"
+    )
+    quantity = models.PositiveIntegerField(
+        help_text="Available quantity for this batch"
+    )
+    expiry_date = models.DateField(
+        help_text="Expiry date for this batch. Format: YYYY-MM-DD."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['expiry_date']
+        unique_together = [['product', 'batch_number']]
+        indexes = [
+            models.Index(fields=['product', 'batch_number']),
+            models.Index(fields=['expiry_date']),
+        ]
 
     def __str__(self):
-        return f"{self.batch_number} - {self.product.name}"
+        return f"{self.batch_number} - {self.product.name} (₹{self.mrp})"
 
 
 class Invoice(models.Model):
@@ -171,24 +187,37 @@ class Invoice(models.Model):
 
 
 class InvoiceItem(models.Model):
-    """Individual item in an invoice"""
+    """Individual item in an invoice, linked to specific batch"""
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.PROTECT)
-    quantity = models.PositiveIntegerField()
-    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    batch_number = models.CharField(
+        max_length=100,
+        help_text="Batch number for traceability (matches Batch.batch_number)"
+    )
+    quantity = models.PositiveIntegerField(
+        help_text="Quantity sold from this batch"
+    )
+    mrp = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text="Manufacturing Recommended Price at time of invoice"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ['invoice', 'product']
-        ordering = ['created_at']
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['invoice']),
+            models.Index(fields=['product', 'batch_number']),
+        ]
 
     def __str__(self):
-        return f"{self.product.name} x{self.quantity} in Invoice #{self.invoice.id}"
+        return f"Invoice #{self.invoice.id} - {self.product.name} (Batch: {self.batch_number})"
 
     def get_subtotal(self):
-        """Calculate subtotal for this item"""
-        return Decimal(str(self.quantity)) * self.unit_price
+        """Calculate subtotal for this item: quantity × mrp"""
+        return self.quantity * self.mrp
 
     def save(self, *args, **kwargs):
         """Update parent invoice total after saving item"""
@@ -216,38 +245,68 @@ from decimal import Decimal
 
 
 class ProductSerializer(serializers.ModelSerializer):
+    """Serializer for products WITH nested batches"""
+    batches = BatchSerializer(many=True, read_only=True)
+    
     class Meta:
         model = Product
-        fields = '__all__'
+        fields = ['id', 'name', 'product_type', 'generic_name', 'manufacturer', 'salt_composition', 'unit', 'description', 'batches', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
 
 class BatchSerializer(serializers.ModelSerializer):
+    """Serializer for product batches"""
     class Meta:
         model = Batch
-        fields = '__all__'
-        read_only_fields = ['created_at']
+        fields = ['batch_number', 'mrp', 'quantity', 'expiry_date']
+        read_only_fields = []
 
 
 class InvoiceItemSerializer(serializers.ModelSerializer):
-    """Serializer for invoice items WITH calculated subtotal"""
+    """Serializer for invoice items WITH calculated subtotal and batch info"""
+    product_id = serializers.IntegerField(source='product.id', read_only=True)
     product_name = serializers.CharField(source='product.name', read_only=True)
+    product_type = serializers.CharField(source='product.product_type', read_only=True)
     subtotal = serializers.SerializerMethodField()
 
     class Meta:
         model = InvoiceItem
-        fields = ['id', 'product', 'product_name', 'quantity', 'unit_price', 'subtotal']
+        fields = ['id', 'product_id', 'product_name', 'product_type', 'batch_number', 'quantity', 'mrp', 'subtotal']
+        read_only_fields = ['product_id', 'product_name', 'product_type']
 
     def get_subtotal(self, obj):
-        """Calculate and return subtotal"""
+        """Calculate and return subtotal: quantity × mrp"""
         return str(obj.get_subtotal())
 
 
 class InvoiceItemCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating invoice items (no calculated fields)"""
+    """Serializer for creating invoice items (accepts product_id and batch_number)"""
     class Meta:
         model = InvoiceItem
-        fields = ['product', 'quantity', 'unit_price']
+        fields = ['product', 'batch_number', 'quantity', 'mrp']
+    
+    def validate(self, data):
+        """Validate batch exists for product and has sufficient quantity"""
+        product = data['product']
+        batch_number = data['batch_number']
+        quantity = data['quantity']
+        
+        try:
+            batch = Batch.objects.get(product=product, batch_number=batch_number)
+        except Batch.DoesNotExist:
+            raise serializers.ValidationError(
+                f"Batch {batch_number} not found for product {product.name}"
+            )
+        
+        if batch.quantity < quantity:
+            raise serializers.ValidationError(
+                f"Insufficient quantity in batch {batch_number}. Available: {batch.quantity}, Requested: {quantity}"
+            )
+        
+        # Auto-fill MRP from batch
+        data['mrp'] = batch.mrp
+        
+        return data
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
