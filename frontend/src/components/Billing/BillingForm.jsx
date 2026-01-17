@@ -20,7 +20,8 @@ const BillingForm = ({ onBillingComplete }) => {
       product_id: '', 
       batch_number: '',
       quantity: '', 
-      selling_rate: '',
+      original_selling_rate: '', // Store original batch selling rate
+      selling_rate: '', // Allow editing
       mrp: ''
     }]);
   };
@@ -35,10 +36,12 @@ const BillingForm = ({ onBillingComplete }) => {
       if (selectedProduct && selectedProduct.batches && selectedProduct.batches.length > 0) {
         // Set first batch as default
         updatedItems[index].batch_number = selectedProduct.batches[0].batch_number;
+        updatedItems[index].original_selling_rate = selectedProduct.batches[0].selling_rate;
         updatedItems[index].selling_rate = selectedProduct.batches[0].selling_rate;
         updatedItems[index].mrp = selectedProduct.batches[0].mrp;
       } else {
         updatedItems[index].batch_number = '';
+        updatedItems[index].original_selling_rate = '';
         updatedItems[index].selling_rate = '';
         updatedItems[index].mrp = '';
       }
@@ -50,6 +53,7 @@ const BillingForm = ({ onBillingComplete }) => {
       if (selectedProduct && selectedProduct.batches) {
         const selectedBatch = selectedProduct.batches.find(b => b.batch_number === value);
         if (selectedBatch) {
+          updatedItems[index].original_selling_rate = selectedBatch.selling_rate;
           updatedItems[index].selling_rate = selectedBatch.selling_rate;
           updatedItems[index].mrp = selectedBatch.mrp;
         }
@@ -83,6 +87,10 @@ const BillingForm = ({ onBillingComplete }) => {
         if (!item.product_id || !item.batch_number || !item.quantity || !item.selling_rate) {
           throw new Error(`Item ${i + 1} is missing required fields (product, batch, quantity, selling rate)`);
         }
+        // Validate selling rate is positive
+        if (parseFloat(item.selling_rate) <= 0) {
+          throw new Error(`Item ${i + 1}: Selling rate must be greater than 0`);
+        }
       }
 
       // Prepare invoice data with batch and selling rate information
@@ -94,7 +102,8 @@ const BillingForm = ({ onBillingComplete }) => {
           product_id: parseInt(item.product_id),
           batch_number: item.batch_number,
           quantity: parseInt(item.quantity),
-          selling_rate: parseFloat(item.selling_rate),
+          original_selling_rate: parseFloat(item.original_selling_rate), // Store original for history
+          selling_rate: parseFloat(item.selling_rate), // Final price (may be edited)
           mrp: parseFloat(item.mrp), // For invoice display only
         })),
       };
@@ -229,16 +238,34 @@ const BillingForm = ({ onBillingComplete }) => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold mb-1">Selling Rate (₹) *</label>
+                    <label className="block text-sm font-semibold mb-1">
+                      Selling Rate (₹) *
+                      {item.selling_rate && item.original_selling_rate && 
+                        Math.abs(parseFloat(item.selling_rate) - parseFloat(item.original_selling_rate)) > 0.01 && (
+                          <span className="ml-1 text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">EDITED</span>
+                        )
+                      }
+                    </label>
                     <input
                       type="number"
                       value={item.selling_rate}
                       onChange={(e) => handleItemChange(index, 'selling_rate', e.target.value)}
-                      className="input-field text-sm bg-gray-200 cursor-not-allowed"
+                      className={`input-field text-sm ${
+                        item.selling_rate && item.original_selling_rate && 
+                        Math.abs(parseFloat(item.selling_rate) - parseFloat(item.original_selling_rate)) > 0.01
+                          ? 'bg-orange-50 border-orange-300'
+                          : 'bg-white'
+                      }`}
                       step="0.01"
-                      placeholder="Auto-filled"
-                      disabled
+                      min="0.01"
+                      placeholder="Enter selling rate"
+                      required
                     />
+                    {item.original_selling_rate && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        Original: ₹{parseFloat(item.original_selling_rate).toFixed(2)}
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -287,9 +314,11 @@ const BillingForm = ({ onBillingComplete }) => {
 
       <div className="bg-sky-50 p-4 rounded-lg mb-6">
         <p className="text-gray-600 text-sm">
-          ✓ Selling Rate is auto-populated from the selected batch (used for billing)<br/>
+          ✓ Selling Rate is auto-populated from the selected batch<br/>
+          ✓ <strong>You can edit the selling rate per bill</strong> - it won't affect the batch default<br/>
+          ✓ Edited selling rates show with an EDITED label and orange highlight<br/>
           ✓ MRP is auto-populated from the selected batch (for invoice reference only)<br/>
-          ✓ Billing total calculated using Selling Rate ONLY<br/>
+          ✓ Billing total calculated using final Selling Rate<br/>
           ✓ Quantity will be deducted from the selected batch<br/>
           ✓ Cost Price is internal reference only (not shown here)
         </p>
