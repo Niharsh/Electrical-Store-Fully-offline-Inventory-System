@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useProducts } from '../../context/ProductContext';
+import { useWholesalers } from '../../context/WholesalersContext';
+import WholesalersManager from '../Wholesalers/WholesalersManager';
 import ErrorAlert from '../Common/ErrorAlert';
 
 const AddProductForm = ({ onProductAdded }) => {
   const { addProduct, error, productTypes, fetchProductTypes } = useProducts();
+  const { selectedWholesalerId, recordPurchase, getLastPurchasePrice, wholesalers } = useWholesalers();
   const [formError, setFormError] = useState('');
+  const [priceComparisonMsg, setPriceComparisonMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [typesLoading, setTypesLoading] = useState(true);
   const [formData, setFormData] = useState({
@@ -60,6 +64,13 @@ const AddProductForm = ({ onProductAdded }) => {
   const handleAddBatch = (e) => {
     e.preventDefault();
     setFormError('');
+    setPriceComparisonMsg('');
+
+    // Validate wholesaler selection
+    if (!selectedWholesalerId) {
+      setFormError('Please select a wholesaler first');
+      return;
+    }
 
     // Validate batch fields
     if (!batchForm.batch_number.trim()) {
@@ -89,6 +100,14 @@ const AddProductForm = ({ onProductAdded }) => {
       return;
     }
 
+    // Check for price differences from previous purchases of this product from same wholesaler
+    const lastPurchase = getLastPurchasePrice(selectedWholesalerId, formData.name.trim());
+    if (lastPurchase && Math.abs(lastPurchase.costPrice - parseFloat(batchForm.cost_price)) > 0.01) {
+      setPriceComparisonMsg(
+        `ℹ️ Note: On ${new Date(lastPurchase.purchaseDate).toLocaleDateString()}, you purchased this product at ₹${lastPurchase.costPrice.toFixed(2)}`
+      );
+    }
+
     // Add batch to product
     const newBatch = {
       batch_number: batchForm.batch_number.trim(),
@@ -97,6 +116,8 @@ const AddProductForm = ({ onProductAdded }) => {
       cost_price: parseFloat(batchForm.cost_price),
       quantity: parseInt(batchForm.quantity),
       expiry_date: batchForm.expiry_date || null,
+      wholesaler_id: selectedWholesalerId,
+      purchase_date: new Date().toISOString().split('T')[0],
     };
 
     setFormData(prev => ({
@@ -145,6 +166,18 @@ const AddProductForm = ({ onProductAdded }) => {
 
       const newProduct = await addProduct(payload);
       
+      // Record purchases in wholesaler context for each batch
+      formData.batches.forEach(batch => {
+        if (batch.wholesaler_id) {
+          recordPurchase(
+            batch.wholesaler_id,
+            formData.name.trim(),
+            batch.cost_price,
+            batch.purchase_date
+          );
+        }
+      });
+      
       // Reset form
       setFormData({
         name: '',
@@ -159,9 +192,12 @@ const AddProductForm = ({ onProductAdded }) => {
       setBatchForm({
         batch_number: '',
         mrp: '',
+        selling_rate: '',
+        cost_price: '',
         quantity: '',
         expiry_date: '',
       });
+      setPriceComparisonMsg('');
 
       if (onProductAdded) {
         onProductAdded(newProduct);
@@ -181,6 +217,18 @@ const AddProductForm = ({ onProductAdded }) => {
         <ErrorAlert error={formError || error} onDismiss={() => setFormError('')} />
       )}
 
+      {/* Wholesaler Manager Section */}
+      <div className="mb-8 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+        <h3 className="text-lg font-semibold mb-4 text-purple-900">1. Select Wholesaler</h3>
+        <WholesalersManager />
+        {!selectedWholesalerId && (
+          <div className="mt-3 p-3 bg-yellow-100 text-yellow-800 rounded text-sm">
+            ⚠️ Please select a wholesaler before adding product batches
+          </div>
+        )}
+      </div>
+
+      <h3 className="text-lg font-semibold mb-4 text-gray-900">2. Product Details</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block font-semibold mb-2">Product Name *</label>
@@ -280,7 +328,7 @@ const AddProductForm = ({ onProductAdded }) => {
 
       {/* Batch Management Section */}
       <div className="mt-8 pt-6 border-t-2 border-gray-200">
-        <h3 className="text-xl font-semibold mb-4">Add Batches to This Product</h3>
+        <h3 className="text-lg font-semibold mb-4">3. Add Batches to This Product</h3>
         
         {formError && formData.batches.length === 0 && (
           <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">
@@ -378,6 +426,12 @@ const AddProductForm = ({ onProductAdded }) => {
           >
             + Add Batch
           </button>
+
+          {priceComparisonMsg && (
+            <div className="mt-4 p-3 bg-blue-100 border border-blue-300 text-blue-800 rounded text-sm">
+              {priceComparisonMsg}
+            </div>
+          )}
         </div>
 
         {/* Batches List */}
@@ -399,6 +453,11 @@ const AddProductForm = ({ onProductAdded }) => {
                       Qty: {batch.quantity} {formData.unit}
                       {batch.expiry_date && ` | Expiry: ${new Date(batch.expiry_date).toLocaleDateString()}`}
                     </div>
+                    {batch.wholesaler_id && (
+                      <div className="text-sm text-purple-600 font-medium">
+                        Wholesaler: {wholesalers.find(w => w.id === batch.wholesaler_id)?.name || 'Unknown'}
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={() => handleRemoveBatch(index)}

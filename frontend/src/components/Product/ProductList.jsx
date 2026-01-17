@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useProducts } from '../../context/ProductContext';
+import { useWholesalers } from '../../context/WholesalersContext';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import ErrorAlert from '../Common/ErrorAlert';
 
 const ProductList = ({ onEdit, onDelete }) => {
   const { products, loading, error, fetchProducts } = useProducts();
+  const { getProductPurchaseHistory, wholesalers } = useWholesalers();
   const [expandedBatches, setExpandedBatches] = useState({});
 
   useEffect(() => {
@@ -174,6 +176,37 @@ const ProductList = ({ onEdit, onDelete }) => {
                                         <span className="inline-block">Expiry: {formatDate(batch.expiry_date)}</span>
                                       )}
                                     </div>
+                                    {batch.wholesaler_id && (
+                                      <div className="text-sm text-purple-600 font-medium mt-2">
+                                        Wholesaler: {wholesalers.find(w => w.id === batch.wholesaler_id)?.name || 'Unknown'}
+                                      </div>
+                                    )}
+                                    {batch.purchase_date && (
+                                      <div className="text-sm text-gray-500 mt-1">
+                                        Purchased: {formatDate(batch.purchase_date)}
+                                      </div>
+                                    )}
+                                    {/* Purchase History Section */}
+                                    {product.name && (
+                                      (() => {
+                                        const purchaseHistory = getProductPurchaseHistory(product.name);
+                                        return purchaseHistory && purchaseHistory.length > 0 ? (
+                                          <div className="mt-3 pt-3 border-t border-gray-200">
+                                            <div className="text-xs font-semibold text-gray-700 mb-2">Purchase History from {wholesalers.find(w => w.id === batch.wholesaler_id)?.name || 'this wholesaler'}:</div>
+                                            <div className="space-y-1">
+                                              {purchaseHistory
+                                                .filter(h => h.wholesalerId === batch.wholesaler_id)
+                                                .sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt))
+                                                .map((record) => (
+                                                  <div key={record.id} className="text-xs text-gray-600">
+                                                    ₹{record.costPrice.toFixed(2)} on {formatDate(record.purchaseDate)}
+                                                  </div>
+                                                ))}
+                                            </div>
+                                          </div>
+                                        ) : null;
+                                      })()
+                                    )}
                                   </div>
                                 </div>
                               ))}
