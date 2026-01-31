@@ -154,7 +154,6 @@ python manage.py runserver 8001
 ```
 
 - **Missing Python package**: install it in the active venv:
-
 ```bash
 pip install <package-name>
 ```
@@ -207,6 +206,3 @@ Extensive documentation is available under `DOCUMENTATION_AND_GUIDES/` (setup, a
 MIT
 
 ---
-
-If you want, I can add a GitHub Actions workflow to run the Admin Recovery acceptance test on push (CI).
->>>>>>> ddb569d (docs: improve README formatting and setup instructions)
