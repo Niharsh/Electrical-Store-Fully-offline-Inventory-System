@@ -17,7 +17,6 @@ from .serializers import (
     OwnerSerializer
 )
 
-
 class AuthViewSet(viewsets.ViewSet):
     """
     Auth endpoints:

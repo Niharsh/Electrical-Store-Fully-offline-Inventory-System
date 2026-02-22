@@ -7,7 +7,6 @@ import secrets
 from .models import Owner, PasswordResetToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
-
 class OwnerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Owner
@@ -67,29 +66,30 @@ class LoginSerializer(serializers.Serializer):
     
     def validate(self, data):
         email = data.get('email')
-        password = data.get('password')
-        
-        # ✅ Check if owner exists
-        if not Owner.owner_exists():
-            raise serializers.ValidationError(
-                "No owner account found. Please sign up first."
-            )
-        
+        password = data.get('password') 
         # Authenticate with email as username
+        print("RAW PASSWORD FROM REQUEST:", repr(password))
+        print("PASSWORD LENGTH:", len(password))
         try:
-            owner = Owner.objects.get(email=email)
-            if not owner.check_password(password):
-                raise serializers.ValidationError(
-                    "Invalid email or password."
-                )
-            if not owner.is_active:
-                raise serializers.ValidationError(
-                    "This account is inactive."
-                )
+            owner = Owner.objects.get(email__iexact=email)
         except Owner.DoesNotExist:
             raise serializers.ValidationError(
                 "Invalid email or password."
             )
+
+        if not owner.check_password(password):
+            raise serializers.ValidationError(
+                "Invalid email or password."
+            )
+
+        if not owner.is_active:
+            raise serializers.ValidationError(
+                "This account is inactive."
+            )
+
+        print("EMAIL RECEIVED:", email)
+        print("OWNER FOUND:", owner)
+        print("PASSWORD VALID:", owner.check_password(password))
         
         data['owner'] = owner
         return data

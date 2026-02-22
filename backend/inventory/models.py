@@ -203,6 +203,7 @@ class Invoice(models.Model):
     customer_name = models.CharField(max_length=255)
     customer_phone = models.CharField(max_length=20, blank=True)
     customer_dl_number = models.CharField(max_length=100, blank=True, null=True, help_text="Customer Drug License Number")
+    customer_address = models.TextField(blank=True, null=True, help_text="Customer Address")
 
     gst_percent = models.DecimalField(
         max_digits=5,

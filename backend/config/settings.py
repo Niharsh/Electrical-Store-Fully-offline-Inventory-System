@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 from pathlib import Path
 from corsheaders.defaults import default_headers    # 👈 ADD THIS
+import os
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -22,12 +23,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-!q)vvdqxr0cu2ha$i%b!r=5cbb#x(y32=l0p+&8*k*ouuxxv+$'
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'please-change-me')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# 🖥️ DESKTOP PRODUCTION: Set DEBUG=False for production builds, True for development
+DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'  # Default True for development
 
-ALLOWED_HOSTS = []
+# 🖥️ DESKTOP PRODUCTION: Restrict to localhost only (Electron runs locally)
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '[::1]']
 
 
 # Application definition
@@ -127,25 +130,34 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'  # Collected static files for production
+STATICFILES_DIRS = []  # Add custom static directories if needed
+
+# 🖥️ DESKTOP PRODUCTION: Serve frontend build from Django
+STATICFILES_DIRS = [
+    BASE_DIR.parent / 'frontend' / 'dist',  # Point to built React app
+]
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-
-# CORS Configuration - Allow frontend on localhost:5173
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:5174",        # 👈 ADD THIS
-    "http://127.0.0.1:5174",        # 👈 ADD THIS
-
-]
+# 🖥️ DESKTOP PRODUCTION: CORS configuration
+# For production desktop (Electron): disable CORS since frontend and backend are same origin
+if not DEBUG:  # Production: disable CORS
+    CORS_ALLOWED_ORIGINS = []
+    CORS_ALLOW_ALL_ORIGINS = False
+else:  # Development: allow cross-origin for separate dev servers
+    CORS_ALLOWED_ORIGINS = [
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+    ]
+    CORS_ALLOW_ALL_ORIGINS = False
 
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_HEADERS = list(default_headers)  # 👈 ADD THIS
+# CORS_ALLOW_HEADERS = list(default_headers)  # 👈 ADD THIS
 
 
 
@@ -191,9 +203,14 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
 EMAIL_HOST_USER = 'medicalstore1379@gmail.com'
-EMAIL_HOST_PASSWORD = 'beoavfrargtccgng'
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
-# Frontend URL for password reset links
-FRONTEND_URL = 'http://localhost:5173'
+# 🖥️ DESKTOP PRODUCTION: Frontend URL for password reset links
+# In production (Electron), frontend is at localhost with backend
+# In development, frontend is at vite dev server
+if DEBUG:
+    FRONTEND_URL = 'http://localhost:5173'
+else:
+    FRONTEND_URL = 'http://localhost:8000'

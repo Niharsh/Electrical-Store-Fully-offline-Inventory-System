@@ -10,13 +10,14 @@ frontend/yarn-debug.log*
 frontend/yarn-error.log*
 
 # Backend
-backend/venv/
-backend/__pycache__/
-backend/*.pyc
+backend/.venv/
+backend/.venv-1/
+**/__pycache__/
+**/*.pyc
 backend/db.sqlite3
 backend/.env
 backend/.env.local
-backend//.vscode/
+backend/.vscode/
 
 # Electron
 node_modules/
@@ -24,6 +25,13 @@ dist-electron/
 *.exe
 *.msi
 *.zip
+
+# Local Python virtualenvs
+.venv/
+venv/
+
+# Environment files
+.env
 
 # IDE
 .vscode/

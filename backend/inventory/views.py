@@ -242,14 +242,14 @@ class ProductViewSet(viewsets.ModelViewSet):
             # Calculate total current stock from all batches
             current_stock = sum(batch.quantity for batch in product.batches.all() if batch.quantity > 0)
             
-            # Get the minimum stock level for this product
-            min_stock_level = product.min_stock_level
-            
-            # Check if product is low stock
-            if current_stock < min_stock_level:
+            # Get the minimum stock level for this product (backwards-compatible fallback)
+            min_stock_level = getattr(product, 'min_stock_level', 10)
+
+            # Check if product is low stock (treat equal as low stock too)
+            if current_stock <= min_stock_level:
                 # Determine severity
-                units_below = min_stock_level - current_stock
-                if current_stock < (min_stock_level / 2):
+                units_below = max(0, min_stock_level - current_stock)
+                if current_stock <= (min_stock_level / 2):
                     severity = 'critical'
                 else:
                     severity = 'warning'
@@ -260,6 +260,8 @@ class ProductViewSet(viewsets.ModelViewSet):
                     'product_type': product.product_type,
                     'current_stock': current_stock,
                     'min_stock_level': min_stock_level,
+                    # also expose camelCase alias for some frontends
+                    'minStockAlert': min_stock_level,
                     'severity': severity,
                     'units_below': units_below,
                 })

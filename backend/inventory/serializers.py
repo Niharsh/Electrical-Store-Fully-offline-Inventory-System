@@ -101,7 +101,10 @@ class ProductSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'product_type', 'generic_name', 'manufacturer',
             'salt_composition', 'unit', 'description', 'batches', 'hsn',
-            'min_stock_level', 'created_at', 'updated_at',
+            'min_stock_level',
+            # Expose camelCase alias for frontend consumers and backward-compatibility
+            'minStockAlert',
+            'created_at', 'updated_at',
             'total_stock', 'cost_price', 'selling_price', 'nearest_expiry',
             'hsn_code', 'gst_rate'
         ]
@@ -131,6 +134,9 @@ class ProductSerializer(serializers.ModelSerializer):
         if earliest_batch and earliest_batch.expiry_date:
             return earliest_batch.expiry_date.isoformat()
         return None
+
+    # Map camelCase field to model field for API consumers
+    minStockAlert = serializers.IntegerField(source='min_stock_level', required=False)
     
     @transaction.atomic
     def create(self, validated_data):
@@ -234,6 +240,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
             'customer_name',
             'customer_phone',
             'customer_dl_number',
+            'customer_address',
             'gst_percent',
             'discount_percent',
             'total_amount',
@@ -261,6 +268,7 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
             'id',
             'customer_name',
             'customer_phone',
+            'customer_address',
             'notes',
             'created_at',
             'items',
@@ -300,6 +308,7 @@ class InvoiceCreateSerializer(serializers.Serializer):
     customer_name = serializers.CharField(max_length=255)
     customer_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
     customer_dl_number = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    customer_address = serializers.CharField(required=False, allow_blank=True)
     gst_percent = serializers.DecimalField(
     max_digits=5, decimal_places=2, required=False, default=0
     )
@@ -403,6 +412,7 @@ class InvoiceCreateSerializer(serializers.Serializer):
                 customer_name=validated_data['customer_name'],
                 customer_phone=validated_data.get('customer_phone', ''),
                 customer_dl_number=validated_data.get('customer_dl_number', ''),
+                customer_address=validated_data.get('customer_address', ''),
                 notes=validated_data.get('notes', ''),
                 total_amount=Decimal('0.00'),
                 gst_percent=validated_data.get('gst_percent') or Decimal('0.00'),

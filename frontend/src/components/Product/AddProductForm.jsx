@@ -20,6 +20,8 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
     generic_name: '',
     manufacturer: '',
     salt_composition: '',
+    // Minimum stock alert (optional). If empty => treated as 10 by backend.
+    min_stock_level: '',
     unit: 'pc',
     description: '',
     batches: [], // Array of batch objects
@@ -65,6 +67,7 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
         generic_name: editingProduct.generic_name || '',
         manufacturer: editingProduct.manufacturer || '',
         salt_composition: editingProduct.salt_composition || '',
+        min_stock_level: editingProduct.min_stock_level ?? editingProduct.minStockAlert ?? '',
         unit: editingProduct.unit || 'pc',
         description: editingProduct.description || '',
         batches: editingProduct.batches || [],
@@ -205,6 +208,14 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
         throw new Error('Product name and type are required');
       }
 
+      // Validate minimum stock alert if provided
+      if (formData.min_stock_level !== '' && formData.min_stock_level !== null) {
+        const ms = Number(formData.min_stock_level);
+        if (!Number.isFinite(ms) || ms < 0) {
+          throw new Error('Minimum Stock Alert cannot be negative');
+        }
+      }
+
       if (formData.batches.length === 0) {
         throw new Error('At least one batch is required');
       }
@@ -213,6 +224,13 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
       const payload = {
         ...formData,
         name: formData.name.trim(),
+        // Ensure min_stock_level is a number and fallback to 10 when empty or invalid
+        min_stock_level: (() => {
+          const v = formData.min_stock_level;
+          if (v === null || v === undefined || String(v).trim() === '') return 10;
+          const n = Number(v);
+          return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 10;
+        })(),
       };
       console.log('📤 AddProductForm: Sending payload with', payload.batches.length, 'batches:', payload);
 
@@ -413,6 +431,20 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
             className="input-field"
             placeholder="e.g., pc, bottle, gm, ml"
           />
+        </div>
+
+        <div>
+          <label className="form-label">Minimum Stock Alert</label>
+          <input
+            type="number"
+            name="min_stock_level"
+            value={formData.min_stock_level}
+            onChange={handleChange}
+            className="input-field"
+            min="0"
+            placeholder="Default: 10"
+          />
+          <p className="text-sm text-gray-500 mt-1">Leave empty to use default minimum (10).</p>
         </div>
 
         <div className="lg:col-span-3">

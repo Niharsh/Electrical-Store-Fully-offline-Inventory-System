@@ -15,6 +15,7 @@ const BillingForm = ({ onBillingComplete }) => {
     customer_name: '',
     customer_phone: '',
     customer_dl_number: '',
+    customer_address: '',
     notes: '',
     discount_percent: '',
   });
@@ -119,6 +120,7 @@ const BillingForm = ({ onBillingComplete }) => {
         customer_name: formData.customer_name,
         customer_phone: formData.customer_phone || "",
         customer_dl_number: formData.customer_dl_number || "",
+        customer_address: formData.customer_address || "",
         notes: formData.notes,
         discount_percent: parseFloat(formData.discount_percent) || 0,
         items: billItems.map(item => ({
@@ -135,6 +137,7 @@ const BillingForm = ({ onBillingComplete }) => {
         })),
       };
 
+      console.log('📤 BillingForm: Customer address value:', formData.customer_address);
       console.log('📤 BillingForm: Sending invoice payload:', JSON.stringify(invoiceData, null, 2));
 
       const newInvoice = await createInvoice(invoiceData);
@@ -146,6 +149,7 @@ const BillingForm = ({ onBillingComplete }) => {
         customer_name: '',
         customer_phone: '',
         customer_dl_number: '',
+        customer_address: '',
         notes: '',
         discount_percent: '',
       });
@@ -255,6 +259,17 @@ const BillingForm = ({ onBillingComplete }) => {
             onChange={(e) => setFormData({ ...formData, customer_dl_number: e.target.value })}
             className="input-field"
             placeholder="Optional DL number"
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Customer Address</label>
+          <textarea
+            rows={2}
+            value={formData.customer_address}
+            onChange={(e) => setFormData({ ...formData, customer_address: e.target.value })}
+            className="input-field"
+            placeholder="Enter customer address"
           />
         </div>
 

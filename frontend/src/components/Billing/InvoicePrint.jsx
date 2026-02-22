@@ -90,25 +90,16 @@ const InvoicePrint = ({ invoice, shop }) => {
   if (!invoice || !shop) return null;
 
   // Calculate item-level totals
-  const subtotal = (invoice.items || []).reduce(
-    (sum, item) => {
-      const itemTotal = parseFloat(item.subtotal) || 0;
-      // For returns, subtract from total
-      return item.is_return ? sum - itemTotal : sum + itemTotal;
-    },
-    0
-  );
+  const subtotal = (invoice.items || []).reduce((sum, item) => {
+    const itemTotal = parseFloat(item.subtotal) || 0;
+    return item.is_return ? sum - itemTotal : sum + itemTotal;
+  }, 0);
 
   // Item-level discounts
-  const itemDiscountAmount = (invoice.items || []).reduce(
-    (sum, item) => {
-      // Per-item discount: discount_percent from item
-      const itemDiscount = (parseFloat(item.subtotal || 0) * parseFloat(item.discount_percent || 0)) / 100;
-      // Returns reduce discount too (since subtotal is negative)
-      return item.is_return ? sum - itemDiscount : sum + itemDiscount;
-    },
-    0
-  );
+  const itemDiscountAmount = (invoice.items || []).reduce((sum, item) => {
+    const itemDiscount = (parseFloat(item.subtotal || 0) * parseFloat(item.discount_percent || 0)) / 100;
+    return item.is_return ? sum - itemDiscount : sum + itemDiscount;
+  }, 0);
 
   // Invoice-level discount (percentage-based)
   const invoiceLevelDiscountPercent = parseFloat(invoice.discount_percent || 0);
@@ -120,53 +111,41 @@ const InvoicePrint = ({ invoice, shop }) => {
   const taxableAmount = subtotal - totalDiscountAmount;
 
   // Calculate GST by item (CGST + SGST split 50-50)
-  // Group by GST slab to support multiple tax rates
-  let cgstByRate = {}; // { "9": 1000, "12": 500 } etc
+  let cgstByRate = {};
   let sgstByRate = {};
 
   (invoice.items || []).forEach(item => {
     const gstRate = parseFloat(item.gst_percent || 0);
     if (gstRate > 0) {
-      // Calculate taxable amount for this item after its discount
       const itemSubtotal = parseFloat(item.subtotal || 0);
       const itemDiscount = (itemSubtotal * parseFloat(item.discount_percent || 0)) / 100;
       let itemTaxable = itemSubtotal - itemDiscount;
-      
-      // For returns, negate the taxable amount (it becomes a credit)
       if (item.is_return) {
         itemTaxable = -itemTaxable;
       }
-      
-      // Split GST: CGST = GST/2, SGST = GST/2
       const gstAmount = (itemTaxable * gstRate) / 100;
-      const cgstAmount = gstAmount / 2;
-      const sgstAmount = gstAmount / 2;
-      
-      cgstByRate[gstRate] = (cgstByRate[gstRate] || 0) + cgstAmount;
-      sgstByRate[gstRate] = (sgstByRate[gstRate] || 0) + sgstAmount;
+      const cgstAmountPer = gstAmount / 2;
+      const sgstAmountPer = gstAmount / 2;
+      cgstByRate[gstRate] = (cgstByRate[gstRate] || 0) + cgstAmountPer;
+      sgstByRate[gstRate] = (sgstByRate[gstRate] || 0) + sgstAmountPer;
     }
   });
 
-  // Total GST amounts
   const cgstAmount = Object.values(cgstByRate).reduce((a, b) => a + b, 0);
   const sgstAmount = Object.values(sgstByRate).reduce((a, b) => a + b, 0);
 
-  // Grand total MUST equal taxable + cgst + sgst
   const grandTotal = taxableAmount + cgstAmount + sgstAmount;
   const amountInWords = grandTotal > 0 ? numberToWords(Math.round(grandTotal)) : 'Zero';
 
-  // Format date
   const invoiceDate = new Date(invoice.created_at);
   const dateStr = `${String(invoiceDate.getDate()).padStart(2, '0')}/${String(invoiceDate.getMonth() + 1).padStart(2, '0')}/${invoiceDate.getFullYear()}`;
 
-  // Detect if this is a wholesale invoice (buyer has store-like details)
   const isWholesale = invoice.buyer_store_name || invoice.buyer_address || invoice.buyer_phone || invoice.buyer_dl_number;
 
-  // Items per page for Half A4 (148mm) - approximately 12-15 items per page
   const itemsPerPage = 12;
   const itemPages = [];
-  for (let i = 0; i < invoice.items.length; i += itemsPerPage) {
-    itemPages.push(invoice.items.slice(i, i + itemsPerPage));
+  for (let i = 0; i < (invoice.items || []).length; i += itemsPerPage) {
+    itemPages.push((invoice.items || []).slice(i, i + itemsPerPage));
   }
 
   return (
@@ -175,15 +154,31 @@ const InvoicePrint = ({ invoice, shop }) => {
           THERMAL INVOICE HEADER - Half A4 Format (148mm width)
           ═══════════════════════════════════════════════════════════ */}
       <div className="thermal-header">
-        {/* Shop Name - Centered, Bold */}
-        <div className="thermal-shop-name">{shop.shop_name || shop.name || 'MEDICAL STORE'}</div>
+        <div className="thermal-header-wrapper">
+          <div className="thermal-header-left">
+            <div className="thermal-shop-name">{shop.shop_name || shop.name || 'MEDICAL STORE'}</div>
+            <div className="thermal-shop-details">
+              {shop.address && <div>{shop.address}</div>}
+              {shop.phone && <div>Ph.No.: {shop.phone}</div>}
+              {shop.dl_number && <div>D.L.No.: {shop.dl_number}</div>}
+              {shop.gst_number && <div>GSTIN: {shop.gst_number}</div>}
+            </div>
+          </div>
 
-        {/* Shop Details - Centered, Smaller */}
-        <div className="thermal-shop-details">
-          {shop.address && <div>{shop.address}</div>}
-          {shop.phone && <div>Ph.No.: {shop.phone}</div>}
-          {shop.dl_number && <div>D.L.No.: {shop.dl_number}</div>}
-          {shop.gst_number && <div>GSTIN: {shop.gst_number}</div>}
+          <div className="thermal-header-right">
+            <div style={{ textAlign: 'right', fontSize: '8px', lineHeight: '1.2' }}>
+              <div><span className="label">Bill To:</span> <span className="value">{invoice.customer_name}</span></div>
+              {invoice.customer_phone && <div style={{ marginTop: '2px' }}><span className="label">Ph.No:</span> <span className="value">{invoice.customer_phone}</span></div>}
+              {invoice.customer_dl_number && invoice.customer_dl_number.trim() !== '' && (
+                <div style={{ marginTop: '2px' }}><span className="label">DL No:</span> <span className="value">{invoice.customer_dl_number}</span></div>
+              )}
+              {invoice.customer_address && invoice.customer_address.trim() !== '' && (
+                <div style={{ marginTop: '2px', maxWidth: '100%', wordBreak: 'break-word' }}>
+                  <span className="label">Address:</span> <span className="value">{invoice.customer_address}</span>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* TAX INVOICE Title - Centered */}
@@ -202,31 +197,7 @@ const InvoicePrint = ({ invoice, shop }) => {
         </table>
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════
-          BILL TO / CUSTOMER DETAILS - Compact format
-          ═══════════════════════════════════════════════════════════ */}
-      <div className="thermal-bill-to">
-        <table className="thermal-customer-table">
-          <tbody>
-            <tr>
-              <td className="label">Bill To:</td>
-              <td className="value">{invoice.customer_name}</td>
-              {invoice.customer_phone && (
-                <>
-                  <td className="label" style={{ paddingLeft: '10px' }}>Ph.No:</td>
-                  <td className="value">{invoice.customer_phone}</td>
-                </>
-              )}
-            </tr>
-            {invoice.customer_dl_number && (
-              <tr>
-                <td className="label">DL No:</td>
-                <td className="value">{invoice.customer_dl_number}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* Customer block moved to header; original block removed to avoid duplication */}
 
       {/* ═══════════════════════════════════════════════════════════
           SECTION 3: ITEMS TABLE - Thermal printer optimized

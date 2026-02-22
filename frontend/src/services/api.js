@@ -1,17 +1,19 @@
 import axios from "axios";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
+// ✅ Production-ready: Always use relative API path
+// Works for:
+// - Django serving React (production)
+// - Electron loading from localhost:8000
+// - No CORS issues
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: "/api",
   timeout: 15000,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// ✅ FIXED: Use correct token key from AuthContext
 api.interceptors.request.use(
   (config) => {
     const accessToken = localStorage.getItem("access_token");
@@ -23,25 +25,18 @@ api.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-// ✅ FIXED: Don't redirect on 401 - let AppContent handle routing
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const normalizedError = {
+    return Promise.reject({
       status: error.response?.status,
       message:
         error.response?.data?.detail ||
         error.response?.data?.message ||
         "Something went wrong",
       raw: error,
-    };
-
-    // ✅ IMPORTANT: Do NOT redirect on 401
-    // AppContent handles routing based on auth state
-    // This prevents infinite redirect loops
-
-    return Promise.reject(normalizedError);
-  },
+    });
+  }
 );
 
 export default api;
