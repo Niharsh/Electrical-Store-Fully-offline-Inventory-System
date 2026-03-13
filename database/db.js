@@ -2,9 +2,37 @@
 // All operations now use synchronous prepared statements and run in Electron main process only.
 // Callers may still use async/await but the underlying calls are synchronous.
 
-const Database = require('better-sqlite3');
+// Note: better-sqlite3 is a native module and must be properly included in the Electron build process.
+// Make sure to install it with npm and configure electron-builder to include it in the final package.
+// In development, it should work out of the box. In production, ensure that the asar packaging does not break the native module loading.
 const path = require('path');
+const fs = require('fs');
 const { app } = require('electron');
+
+let Database;
+try {
+  if (process.resourcesPath) {
+    const unpackedPath = path.join(
+      process.resourcesPath,
+      'app.asar.unpacked',
+      'node_modules',
+      'better-sqlite3'
+    );
+    if (fs.existsSync(unpackedPath)) {
+      Database = require(unpackedPath);
+      console.log('[db] Loaded better-sqlite3 from asar.unpacked:', unpackedPath);
+    } else {
+      Database = require('better-sqlite3');
+      console.log('[db] Loaded better-sqlite3 from node_modules (fallback)');
+    }
+  } else {
+    Database = require('better-sqlite3');
+    console.log('[db] Loaded better-sqlite3 from node_modules (dev)');
+  }
+} catch (err) {
+  console.error('[db] Failed to load better-sqlite3:', err.message);
+  throw err;
+}
 
 let db = null;
 

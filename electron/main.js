@@ -8,13 +8,20 @@ const net = require("net");
 // during development __dirname points to electron/ folder, in production
 // it points inside app.asar. app.getAppPath() returns the asar root path.
 function resolveDatabasePath() {
-  // choose base according to whether the app is packaged; app.getAppPath()
-  // works both in dev and prod but may include 'app.asar' when packaged.
-  const base = app.isPackaged ? app.getAppPath() : __dirname;
-  // path to the JS file (extension optional)
-  const candidate = path.join(base, '..', 'database', 'db');
-  console.log('[electron] resolveDatabasePath ->', candidate, 'exists=', fs.existsSync(candidate));
-  return candidate;
+  if (app.isPackaged) {
+    // extraResources copies database/ to resources/database/
+    // process.resourcesPath points to the resources/ folder
+    const candidate = path.join(process.resourcesPath, 'database', 'db');
+    console.log('[electron] resolveDatabasePath (packaged) ->', candidate,
+                'exists=', fs.existsSync(candidate + '.js'));
+    return candidate;
+  } else {
+    // Development: __dirname is electron/ folder
+    const candidate = path.join(__dirname, '..', 'database', 'db');
+    console.log('[electron] resolveDatabasePath (dev) ->', candidate,
+                'exists=', fs.existsSync(candidate + '.js'));
+    return candidate;
+  }
 }
 
 const dbPath = resolveDatabasePath();
@@ -24,6 +31,7 @@ const { initializeLicense, activateLicense } = require("./licensing/licenseValid
 let mainWindow;
 let activationWindow;
 let licenseValid = false;  // Track if license is validated
+let activationComplete = false; // Track if activation process is complete
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -53,7 +61,7 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, "preload.js"),
     },
-    icon: path.join(__dirname, "../frontend/public/icon.png"),
+    icon: path.join(__dirname, "../unamed.ico"),
   });
 
   // Load Vite dev server in development
@@ -101,11 +109,14 @@ function createWindow() {
         }
       })
       .connect({ host, port });
-} else {
-    const prodFile = path.join(__dirname, "../frontend/dist/index.html");
-    console.log('[electron] Production loadFile:', prodFile, 'exists=', fs.existsSync(prodFile));
-    mainWindow.loadFile(prodFile).catch(err => console.error('[electron] loadFile error:', err));
-}
+}  else {
+      // Frontend is now in extraResources, outside asar
+      const prodFile = path.join(process.resourcesPath, 'frontend', 'dist', 'index.html');
+      console.log('[electron] prodFile:', prodFile, 'exists:', fs.existsSync(prodFile));
+      mainWindow.loadFile(prodFile)
+        .then(() => console.log('[electron] loadFile success'))
+        .catch(err => console.error('[electron] loadFile error:', err));
+  }
 
   // Prevent external navigation in production
   mainWindow.webContents.on("will-navigate", (event, url) => {
@@ -158,25 +169,31 @@ function createActivationWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, "preload.js"),
     },
-    icon: path.join(__dirname, "../frontend/public/icon.png"),
+    ...(fs.existsSync(path.join(__dirname, "../unamed.ico")) && {
+      icon: path.join(__dirname, "../unamed.ico"),
+    }),
   });
 
   // Prevent closing window without valid license
   activationWindow.on("close", (e) => {
-    console.log('[license-window] Close attempt blocked');
-    e.preventDefault();
+    if (!activationComplete) {
+      console.log('[license-window] Close attempt blocked');
+      e.preventDefault();
+    }
   });
 
   // Load activation page
   if (!app.isPackaged) {
-    const devUrl = "http://localhost:5173/#/activate";
-    console.log('[license-window] Loading:', devUrl);
-    activationWindow.loadURL(devUrl).catch(err => console.error('[license-window] loadURL error:', err));
-    // Don't open dev tools for activation window in dev mode
+    activationWindow.loadURL('http://localhost:5173/#/activate')
+      .catch(err => console.error('[license-window] loadURL error:', err));
   } else {
-    const prodFile = path.join(__dirname, "../frontend/dist/index.html");
-    console.log('[license-window] Loading:', prodFile);
-    activationWindow.loadFile(prodFile, { hash: '#/activate' }).catch(err => console.error('[license-window] loadFile error:', err));
+      // Frontend is now in extraResources, outside asar
+      const prodFile = path.join(process.resourcesPath, 'frontend', 'dist', 'index.html');
+      console.log('[license-window] prodFile:', prodFile, 'exists:', fs.existsSync(prodFile));
+      
+      activationWindow.loadFile(prodFile, { hash: 'activate' })
+      .then(() => console.log('[license-window] loadFile success'))
+      .catch(err => console.error('[license-window] loadFile error:', err));
   }
 
   activationWindow.on("closed", () => {
@@ -202,15 +219,14 @@ ipcMain.handle("activate-license", async (event, licenseKey) => {
     if (result.success) {
       console.log('[ipc] License activation successful');
       licenseValid = true;
-      
-      // Close activation window and create main app window
+      activationComplete = true; // Allow window to close now
+
       if (activationWindow) {
-        activationWindow.close();
+        activationWindow.destroy(); // destroy() bypasses close event
       }
-      
-      // Create main window
-      createWindow();
-      
+
+      createWindow(); // Create main app window
+
       return {
         success: true,
         message: 'License activated successfully!',
@@ -933,6 +949,7 @@ ipcMain.on('renderer-error', (event, info) => {
 
 // App lifecycle
 app.whenReady().then(async () => {
+  
   // Initialize database before creating window
   try {
     await db.initializeDatabase();

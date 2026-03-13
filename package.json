@@ -21,9 +21,10 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.6.0",
     "concurrently": "^8.2.2",
-    "electron": "27.3.11",
-    "electron-builder": "^24.9.1",
+    "electron": "^32.2.7",
+    "electron-builder": "^25.1.8",
     "wait-on": "^7.2.0"
   },
   "build": {
@@ -33,18 +34,33 @@
       "buildResources": "frontend/public",
       "output": "dist-electron"
     },
-    // unpack database folder and native modules to avoid asar path issues
+    "icon": "unamed.ico",
+    "extraResources": [
+    {
+      "from": "database",
+      "to": "database",
+      "filter": ["**/*"]
+    },
+    {"from":"frontend/dist",
+    "to":"frontend/dist",
+    "filter":["**/*"]}
+  ],
     "asarUnpack": [
-      "database/**",
-      "node_modules/better-sqlite3/**"
+      "node_modules/better-sqlite3/**",
+      "node_modules/bindings/**",
+      "node_modules/file-uri-to-path/**"
     ],
     "files": [
       "electron/**/*",
-      "database/**/*",
       "frontend/dist/**/*",
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/bindings/**/*",
+      "node_modules/file-uri-to-path/**/*",
+      "unamed.ico",
       "package.json"
     ],
     "win": {
+      "icon": "unamed.ico",
       "target": [
         "nsis",
         "portable"
@@ -64,6 +80,7 @@
     }
   },
   "dependencies": {
-    "better-sqlite3": "8.7.0"
+    "better-sqlite3": "^11.3.0",
+    "tar": "^7.5.11"
   }
 }
