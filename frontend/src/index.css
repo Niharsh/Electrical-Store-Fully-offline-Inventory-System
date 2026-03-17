@@ -155,9 +155,42 @@ button:focus-visible {
 /* =========================
    PRINT FIX – HIDE LAYOUT
    ========================= */
+
+/* ✅ When printInvoice() is called - hide app chrome on screen */
+body.printing-invoice .print-hidden,
+body.printing-invoice header,
+body.printing-invoice nav,
+body.printing-invoice .invoice-control-bar {
+  display: none !important;
+}
+
+/* ✅ Print media - what the printer actually sees */
 @media print {
-  .print-hidden {
+  /* Hide app chrome */
+  .print-hidden,
+  .invoice-control-bar,
+  header,
+  nav {
     display: none !important;
+  }
+
+  /* Show invoice */
+  #invoice-print-area {
+    display: block !important;
+  }
+
+  /* Half A4 page size */
+  @page {
+    size: 148mm 210mm portrait;
+    margin: 3mm;
+  }
+
+  html, body {
+    width: 148mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    font-size: 7.5px !important;
   }
 }
 

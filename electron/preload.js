@@ -1,17 +1,13 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
-// Signal that preload has been evaluated
 console.log("Preload loaded successfully");
 
-// Expose limited, safe API to renderer process
 contextBridge.exposeInMainWorld("electron", {
   platform: process.platform,
   arch: process.arch,
-  // Trigger printing from renderer (calls main process)
-  print: (options = {}) => ipcRenderer.invoke("print", options),
+  // ✅ REMOVED: print - no longer needed
 });
 
-// Expose a minimal `api` bridge for renderer to call IPC methods.
 contextBridge.exposeInMainWorld("api", {
   // License Management
   activateLicense: (licenseKey) => ipcRenderer.invoke("activate-license", licenseKey),
@@ -27,8 +23,8 @@ contextBridge.exposeInMainWorld("api", {
   // Database Management
   backupDatabase: () => ipcRenderer.invoke("backup-database"),
   restoreDatabase: () => ipcRenderer.invoke("restore-database"),
-  print: (options = {}) => ipcRenderer.invoke("print", options),
-  
+  // ✅ REMOVED: print - replaced by printInvoice below
+
   // Products
   addProduct: (productData) => ipcRenderer.invoke("add-product", productData),
   getProducts: () => ipcRenderer.invoke("get-products"),
@@ -63,7 +59,8 @@ contextBridge.exposeInMainWorld("api", {
   getInvoiceById: (invoiceId) => ipcRenderer.invoke("get-invoice-by-id", invoiceId),
   deleteInvoice: (invoiceId) => ipcRenderer.invoke("delete-invoice", invoiceId),
   updateInvoice: (invoiceId, invoiceData) => ipcRenderer.invoke("update-invoice", invoiceId, invoiceData),
-  
+  printInvoice: () => ipcRenderer.invoke("print-invoice"), // ✅ Already correct
+
   // Dashboard
   getDashboardSummary: () => ipcRenderer.invoke("get-dashboard-summary"),
   getLowStockItems: () => ipcRenderer.invoke("get-low-stock-items"),
@@ -79,20 +76,9 @@ contextBridge.exposeInMainWorld("api", {
   deletePurchaseBill: (billId) => ipcRenderer.invoke("delete-purchase-bill", billId),
 });
 
-// Override window.print in renderer safely so existing code calling window.print() works in production
-try {
-  Object.defineProperty(window, "print", {
-    configurable: true,
-    value: () => ipcRenderer.invoke("print"),
-  });
-} catch (err) {
-  // Non-fatal: fallback to default print behavior
-  // console.warn('Could not override window.print in preload:', err);
-}
+// ✅ REMOVED: window.print override - was breaking popup print
 
-// Note: No Node APIs exposed to renderer. Renderer can make HTTP requests normally.
-
-// Forward renderer errors/unhandled rejections to main for centralized logging
+// Forward renderer errors to main
 window.addEventListener('error', (e) => {
   try {
     ipcRenderer.send('renderer-error', {
@@ -103,7 +89,6 @@ window.addEventListener('error', (e) => {
       stack: e.error && e.error.stack
     });
   } catch (err) {
-    // best-effort
     console.error('preload: failed to forward renderer error', err);
   }
 });

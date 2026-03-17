@@ -1,6 +1,7 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 const net = require("net");
 // ensure correct resolution both during development (file system) and
 // packaged inside app.asar
@@ -151,7 +152,32 @@ function createWindow() {
   });
 
   // Prevent new windows / external popups by default
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  // Allow window.open() for invoice print popup, deny everything else
+  mainWindow.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    // Allow the invoice print popup (opened with name 'invoice-print')
+    if (frameName === 'invoice-print') {
+      console.log('[electron] Allowing print popup window');
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 750,
+          height: 950,
+          autoHideMenuBar: true,
+          title: 'Print Invoice',
+          // ✅ No preload needed - popup is plain HTML only
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            preload:path.join(__dirname, "preload-print.js")
+          }
+        }
+      };
+    }
+  
+    // Deny everything else (external URLs, unknown popups)
+    console.log('[electron] Blocking popup for url:', url);
+    return { action: 'deny' };
+  });
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -286,34 +312,179 @@ ipcMain.handle("activate-license", async (event, licenseKey) => {
 
 // IPC: handle print requests - open native Electron print dialog
 // The native dialog includes "Save as PDF" option
-ipcMain.handle("print", async (event, options = {}) => {
+// IPC: print-invoice - print using webContents.print() with preview support
+// This approach opens the system's print dialog, allowing users to choose "Save as PDF" or print to a real printer with preview
+// ─────────────────────────────────────────────────────────────────────────────
+// IPC: print-invoice
+// Strategy: hidden BrowserWindow containing ONLY the invoice HTML.
+//   • Avoids the @media print "body > * { display:none }" trap in the main window.
+//   • Uses loadFile() on a temp file instead of data: URI (no 2 MB size cap).
+//   • @media print rules stripped before CSS injection (they were written for
+//     window.print() on the full React page — destructive in an isolated window).
+// ─────────────────────────────────────────────────────────────────────────────
+ipcMain.handle("print-invoice", async (event) => {
+  let printWin    = null;   // always destroy on exit
+  let tempHtmlPath = null;   // always delete on exit
+
   try {
-    const wc = event.sender;
-    
-    console.log('[ipc] Print handler called - opening native Electron print dialog');
-    
-    // Use native Electron print dialog which has "Save as PDF" option built-in
-    // This is the most reliable method - user selects "Print to File" or "Save as PDF"
-    await wc.print({
-      silent: false,  // Show print dialog
-      printBackground: true,
-      margins: { marginType: 'none' },
-      pageSize: 'A4',
-      orientation: 'portrait'
+    console.log('[ipc] print-invoice: starting hidden-window PDF generation...');
+
+    if (!mainWindow) throw new Error('Main window is not available');
+
+    // ── 1. Pull rendered invoice HTML from the live React DOM ─────────────────
+    // Target: <div id="invoice-print-area"> in InvoiceDetail.jsx
+    const invoiceHTML = await mainWindow.webContents.executeJavaScript(`
+      (function () {
+        const el = document.getElementById('invoice-print-area');
+        if (!el) throw new Error('invoice-print-area not found in DOM');
+        return el.innerHTML;
+      })()
+    `);
+
+    if (!invoiceHTML || invoiceHTML.trim() === '') {
+      throw new Error('invoice-print-area was empty — nothing to print');
+    }
+    console.log('[ipc] print-invoice: invoice HTML captured, length:', invoiceHTML.length);
+
+    // ── 2. Collect all CSS active in the main window ──────────────────────────
+    // Pass 1 — CSSStyleSheet rules (Vite-linked .css files)
+    // Pass 2 — <style> tag textContent (Vite HMR injected styles, index.html)
+    // cross-origin sheets (CDN fonts etc.) are silently skipped
+    const allCSS = await mainWindow.webContents.executeJavaScript(`
+      (function () {
+        let css = '';
+
+        for (const sheet of Array.from(document.styleSheets)) {
+          try {
+            for (const rule of Array.from(sheet.cssRules || [])) {
+              css += rule.cssText + '\\n';
+            }
+          } catch (e) {
+            // cross-origin sheet — skip
+          }
+        }
+
+        for (const tag of Array.from(document.querySelectorAll('style'))) {
+          css += tag.textContent + '\\n';
+        }
+
+        return css;
+      })()
+    `);
+    console.log('[ipc] print-invoice: CSS captured, length:', allCSS.length);
+
+    // ── 3. Strip @media print blocks ──────────────────────────────────────────
+    // InvoicePrint.css contains  body > * { display:none !important }
+    // inside @media print.  In the isolated hidden window there is no React,
+    // no #root, no nav — those rules are not only useless, they would hide
+    // the invoice content itself.  Remove every @media print { ... } block.
+    const cssForPrint = allCSS.replace(
+      /@media\s+print\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/gi,
+      ''
+    );
+    console.log('[ipc] print-invoice: @media print blocks stripped');
+
+    // ── 4. Build self-contained HTML document ─────────────────────────────────
+    // Wrap injected HTML in the same class selectors InvoicePrint.css targets.
+    const htmlDoc = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Invoice</title>
+  <style>
+    /* ── isolation reset ── */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 13px;
+      color: #000000;
+    }
+    .invoice-print-wrapper,
+    .invoice-print {
+      width: 100%;
+    }
+  </style>
+  <style>
+    /* ── all app styles (@media print blocks removed) ── */
+    ${cssForPrint}
+  </style>
+</head>
+<body>
+  <div class="invoice-print-wrapper">
+    <div class="invoice-print">
+      ${invoiceHTML}
+    </div>
+  </div>
+</body>
+</html>`;
+
+    // ── 5. Write to temp file (no data: URI size limit) ───────────────────────
+    tempHtmlPath = path.join(os.tmpdir(), `invoice_print_${Date.now()}.html`);
+    fs.writeFileSync(tempHtmlPath, htmlDoc, 'utf8');
+    console.log('[ipc] print-invoice: temp HTML written to:', tempHtmlPath);
+
+    // ── 6. Create hidden BrowserWindow ────────────────────────────────────────
+    printWin = new BrowserWindow({
+      show:   false,
+      width:  900,    // wide enough for A4 portrait
+      height: 1200,
+      webPreferences: {
+        javascript:       true,
+        nodeIntegration:  false,
+        contextIsolation: true,
+      },
     });
 
-    console.log('[ipc] Print dialog completed');
-    return {
-      success: true,
-      message: 'Print dialog opened. Use "Save as PDF" option to save invoice.'
-    };
+    await printWin.loadFile(tempHtmlPath);
+    console.log('[ipc] print-invoice: hidden window loaded');
+
+    // ── 7. Short layout settle delay ──────────────────────────────────────────
+    // did-finish-load fires after parse; give fonts/tables time to lay out.
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // ── 8. Generate PDF from the clean isolated window ────────────────────────
+    const pdfBuffer = await printWin.webContents.printToPDF({
+      printBackground: true,
+      pageSize:        'A4',
+      landscape:       false,
+      marginsType:     1,    // 0 = default  1 = none  2 = minimum
+      displayHeaderFooter: false,
+    });
+    console.log('[ipc] print-invoice: PDF buffer generated, size:', pdfBuffer.length);
+
+    // ── 9. Destroy hidden window immediately ──────────────────────────────────
+    printWin.destroy();
+    printWin = null;
+
+    // ── 10. Save PDF and open in default viewer ───────────────────────────────
+    const pdfPath = path.join(os.tmpdir(), `invoice_${Date.now()}.pdf`);
+    fs.writeFileSync(pdfPath, pdfBuffer);
+    console.log('[ipc] print-invoice: PDF saved to:', pdfPath);
+
+    const openError = await shell.openPath(pdfPath);
+    if (openError) throw new Error(`shell.openPath failed: ${openError}`);
+
+    console.log('[ipc] print-invoice: PDF opened in viewer successfully');
+    return { success: true, pdfPath };
 
   } catch (err) {
-    console.error('[ipc] Print error:', err.message);
-    return {
-      success: false,
-      message: err.message || 'Print failed'
-    };
+    console.error('[ipc] print-invoice ERROR:', err.message);
+
+    if (printWin && !printWin.isDestroyed()) {
+      printWin.destroy();
+    }
+
+    return { success: false, message: err.message };
+
+  } finally {
+    // Always remove the intermediate HTML file; PDF file stays for the viewer.
+    if (tempHtmlPath) {
+      try { fs.unlinkSync(tempHtmlPath); } catch (_) { /* ignore */ }
+    }
   }
 });
 

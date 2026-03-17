@@ -89,6 +89,16 @@ const InvoicePrint = ({ invoice, shop }) => {
   // Guard: Only render if we have required data
   if (!invoice || !shop) return null;
 
+  // Format expiry date as MM/YY
+  const formatExpiry = (dateStr) => {
+    if (!dateStr) return '-';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return parts[1] + '/' + parts[2].substring(0, 2);
+    }
+    return dateStr;
+  };
+
   // Calculate item-level totals
   const subtotal = (invoice.items || []).reduce((sum, item) => {
     const itemTotal = parseFloat(item.subtotal) || 0;
@@ -154,38 +164,38 @@ const InvoicePrint = ({ invoice, shop }) => {
           THERMAL INVOICE HEADER - Half A4 Format (148mm width)
           ═══════════════════════════════════════════════════════════ */}
       <div className="thermal-header">
-        <div className="thermal-header-wrapper">
-          <div className="thermal-header-left">
-            <div className="thermal-shop-name">{shop.shop_name || shop.name || 'MEDICAL STORE'}</div>
-            <div className="thermal-shop-details">
-              {shop.address && <div>{shop.address}</div>}
+        <div className="thermal-header-wrapper" style={{ display: 'flex', justifyContent: 'space-between', gap: '2mm' }}>
+          <div className="thermal-header-left" style={{ width: '48%', maxWidth: '48%', wordBreak: 'break-word', fontSize: '7px', lineHeight: '1.4' }}>
+            <div className="thermal-shop-name" style={{ fontSize: '9px', fontWeight: 'bold', marginBottom: '1px' }}>{shop.shop_name || shop.name || 'MEDICAL STORE'}</div>
+            <div className="thermal-shop-details" style={{ fontSize: '7px', lineHeight: '1.3', margin: '0' }}>
+              {shop.address && <div style={{ maxWidth: '100%', wordBreak: 'break-word' }}>{shop.address}</div>}
               {shop.phone && <div>Ph.No.: {shop.phone}</div>}
               {shop.dl_number && <div>D.L.No.: {shop.dl_number}</div>}
               {shop.gst_number && <div>GSTIN: {shop.gst_number}</div>}
             </div>
           </div>
 
-          <div className="thermal-header-right">
-            <div style={{ textAlign: 'right', fontSize: '8px', lineHeight: '1.2' }}>
-              <div><span className="label">Bill To:</span> <span className="value">{invoice.customer_name}</span></div>
-              {invoice.customer_phone && <div style={{ marginTop: '2px' }}><span className="label">Ph.No:</span> <span className="value">{invoice.customer_phone}</span></div>}
+          <div className="thermal-header-right" style={{ width: '48%', maxWidth: '48%', textAlign: 'right', wordBreak: 'break-word', fontSize: '7px', lineHeight: '1.4' }}>
+            <div style={{ fontSize: '7px', lineHeight: '1.3' }}>
+              <div><span style={{ fontWeight: 'bold' }}>Bill To:</span> <span>{invoice.customer_name}</span></div>
+              {invoice.customer_phone && <div style={{ marginTop: '2px' }}><span style={{ fontWeight: 'bold' }}>Ph.No:</span> <span>{invoice.customer_phone}</span></div>}
               {invoice.customer_dl_number && invoice.customer_dl_number.trim() !== '' && (
-                <div style={{ marginTop: '2px' }}><span className="label">DL No:</span> <span className="value">{invoice.customer_dl_number}</span></div>
+                <div style={{ marginTop: '2px' }}><span style={{ fontWeight: 'bold' }}>DL No:</span> <span style={{ maxWidth: '100%', wordBreak: 'break-word', display: 'inline-block' }}>{invoice.customer_dl_number}</span></div>
               )}
               {invoice.customer_address && invoice.customer_address.trim() !== '' && (
                 <div style={{ marginTop: '2px', maxWidth: '100%', wordBreak: 'break-word' }}>
-                  <span className="label">Address:</span> <span className="value">{invoice.customer_address}</span>
+                  <span style={{ fontWeight: 'bold' }}>Address:</span> <span style={{ display: 'block', marginTop: '1px' }}>{invoice.customer_address}</span>
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* TAX INVOICE Title - Centered */}
-        <div className="thermal-tax-invoice">TAX INVOICE</div>
+        {/* TAX INVOICE Title - Centered, between address blocks and invoice meta */}
+        <div style={{ fontSize: '10px', fontWeight: 'bold', padding: '2px 0', margin: '2px 0', borderTop: '1px solid #000', borderBottom: '1px solid #000', textAlign: 'center', textTransform: 'uppercase' }}>TAX INVOICE</div>
 
         {/* Invoice Meta - Two column layout */}
-        <table className="thermal-invoice-meta">
+        <table className="thermal-invoice-meta" style={{ fontSize: '7.5px' }}>
           <tbody>
             <tr>
               <td className="meta-label">Invoice No:</td>
@@ -246,7 +256,7 @@ const InvoicePrint = ({ invoice, shop }) => {
                   )}
                 </td>
                 <td className="thermal-col-batch">{item.batch_number || '-'}</td>
-                <td className="thermal-col-exp">{item.expiry_date || '-'}</td>
+                <td className="thermal-col-exp" style={{ whiteSpace: 'nowrap', minWidth: '34px', width: '34px', fontSize: '7px', padding: '1.5px 2px' }}>{formatExpiry(item.expiry_date)}</td>
                 <td className="thermal-col-hsn">{item.hsn_code || '-'}</td>
                 <td className="thermal-col-mrp">₹{parseFloat(item.mrp || 0).toFixed(2)}</td>
                 <td className="thermal-col-rate">₹{parseFloat(item.selling_rate || 0).toFixed(2)}</td>

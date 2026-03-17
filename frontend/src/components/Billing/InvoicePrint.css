@@ -45,36 +45,142 @@
 
   html, body {
     width: 100% !important;
-    height: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
     background: white !important;
   }
 
+  /* ✅ CORRECT: body's direct child is #root not <main> */
   body > * {
     display: none !important;
   }
 
-  .invoice-print {
+  /* ✅ Show #root → the whole React tree */
+  body > #root {
     display: block !important;
   }
 
+  /* ✅ Hide everything inside #root */
+  #root > * {
+    display: none !important;
+  }
+
+  /* ✅ Show only the invoice chain inside #root */
+  #root > * > * > * > * > * > * > #invoice-print-area,
+  #root > * > * > * > * > * > * > .invoice-print-wrapper,
+  #invoice-print-area,
+  .invoice-print-wrapper {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  /* ✅ Show the invoice itself */
+  .invoice-print,
   .invoice-print.thermal-invoice {
     display: block !important;
     visibility: visible !important;
     width: 148mm !important;
     height: auto !important;
     margin: 0 !important;
-    padding: 5mm !important;
+    padding: 4mm !important;
     background: white !important;
     position: static !important;
-    page-break-after: always !important;
     overflow: visible !important;
-    font-size: 9px !important;
+    font-size: 7px !important;
   }
 
-  .invoice-control-bar {
+  /* ✅ Make ALL ancestors of invoice visible */
+  #invoice-print-area *,
+  .invoice-print-wrapper * {
+    visibility: visible !important;
+  }
+
+  /* ✅ Hide control bar and nav */
+  .invoice-control-bar,
+  .print-hidden,
+  header,
+  nav {
     display: none !important;
+  }
+
+  @page {
+    size: 148mm 210mm;
+    margin: 2mm;
+  }
+
+  .thermal-items-table {
+    font-size: 7px !important;
+  }
+
+  .thermal-items-table thead th {
+    padding: 1px 2px !important;
+    font-size: 7px !important;
+    line-height: 1;
+  }
+
+  .thermal-items-table tbody td {
+    padding: 1px 2px !important;
+    font-size: 7px !important;
+    line-height: 1.1 !important;
+  }
+
+  .thermal-item-row .product-name {
+    max-width: 55px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .thermal-header {
+    margin-bottom: 2mm !important;
+    padding-bottom: 1mm !important;
+  }
+
+  .thermal-summary-table {
+    font-size: 8px !important;
+  }
+
+  .thermal-summary-row td {
+    padding: 0.5mm 1mm !important;
+  }
+
+  .thermal-footer {
+    font-size: 7px !important;
+    margin-top: 1mm !important;
+  }
+
+  .thermal-amount-in-words {
+    font-size: 7px !important;
+    padding: 0.5mm !important;
+    margin: 0.5mm 0 !important;
+  }
+
+  .thermal-terms-conditions {
+    font-size: 6px !important;
+    padding: 0 !important;
+    margin: 0.5mm 0 !important;
+  }
+
+  .thermal-terms-conditions p {
+    margin: 0.2mm 0 !important;
+    padding-left: 1mm !important;
+  }
+
+  .thermal-footer-text {
+    font-size: 8px !important;
+    margin-top: 0.5mm !important;
+  }
+
+  .thermal-return-item {
+    background-color: transparent;
+  }
+
+  .thermal-return-item .return-badge {
+    display: inline;
+  }
+
+  .thermal-col-amount.return-amount {
+    color: #000;
   }
 }
 
@@ -104,17 +210,21 @@
   justify-content: space-between;
   align-items: flex-start;
   width: 100%;
-  gap: 4mm;
+  gap: 2mm;
 }
 
 .thermal-header-left {
-  width: 50%;
+  width: 48%;
+  max-width: 48%;
   text-align: left;
+  word-break: break-word;
 }
 
 .thermal-header-right {
-  width: 50%;
+  width: 48%;
+  max-width: 48%;
   text-align: right;
+  word-break: break-word;
 }
 
 .thermal-shop-name {
@@ -226,59 +336,82 @@
   line-height: 1.2;
 }
 
-/* Column widths optimized for thermal printer (148mm) */
+/* Column widths optimized for thermal printer (148mm) - Fixed pixel widths for half A4 */
 .thermal-col-sno {
-  width: 3%;
+  width: 14px;
+  min-width: 14px;
+  max-width: 14px;
   text-align: center;
 }
 
 .thermal-col-qty {
-  width: 5%;
+  width: 14px;
+  min-width: 14px;
+  max-width: 14px;
   text-align: center;
 }
 
 .thermal-col-product {
-  width: 28%;
+  width: 50px;
+  min-width: 50px;
+  max-width: 50px;
   text-align: left;
 }
 
 .thermal-col-batch {
-  width: 9%;
+  width: 24px;
+  min-width: 24px;
+  max-width: 24px;
   text-align: center;
 }
 
 .thermal-col-exp {
-  width: 6%;
+  width: 24px;
+  min-width: 24px;
+  max-width: 24px;
   text-align: center;
+  white-space: nowrap;
 }
 
 .thermal-col-hsn {
-  width: 6%;
+  width: 24px;
+  min-width: 24px;
+  max-width: 24px;
   text-align: center;
 }
 
 .thermal-col-mrp {
-  width: 8%;
+  width: 30px;
+  min-width: 30px;
+  max-width: 30px;
   text-align: right;
 }
 
 .thermal-col-rate {
-  width: 8%;
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
   text-align: right;
 }
 
 .thermal-col-disc {
-  width: 6%;
+  width: 18px;
+  min-width: 18px;
+  max-width: 18px;
   text-align: center;
 }
 
 .thermal-col-gst {
-  width: 6%;
+  width: 18px;
+  min-width: 18px;
+  max-width: 18px;
   text-align: center;
 }
 
 .thermal-col-amount {
-  width: 9%;
+  width: 36px;
+  min-width: 36px;
+  max-width: 36px;
   text-align: right;
 }
 
@@ -445,18 +578,18 @@
 }
 
 /* ════════════════════════════════════════════════════════════
-   Print optimization for thermal printers
+   Print optimization for thermal printers - Half A4 (148mm × 210mm)
    ════════════════════════════════════════════════════════════ */
 @media print {
   @page {
     size: 148mm 210mm;
-    margin: 0;
-    padding: 0;
+    margin: 3mm;
   }
 
   .thermal-invoice {
-    width: 148mm !important;
+    width: 142mm !important;
     height: auto !important;
+    padding: 3mm !important;
   }
 }
 
