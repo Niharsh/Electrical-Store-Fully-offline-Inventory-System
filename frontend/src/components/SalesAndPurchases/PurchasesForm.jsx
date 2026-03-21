@@ -155,7 +155,7 @@ const PurchasesForm = ({ onSuccess }) => {
               name="wholesaler_name"
               value={formData.wholesaler_name}
               onChange={handleChange}
-              placeholder="e.g., ABC Pharma Wholesale"
+              placeholder="e.g., ABC Electrical Wholesale"
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
                 validationErrors.wholesaler_name ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
               }`}

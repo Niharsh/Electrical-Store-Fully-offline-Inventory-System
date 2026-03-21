@@ -20,21 +20,22 @@ const Inventory = () => {
   };
 
   const handleDelete = async (productId) => {
-    console.log('🗑️ Delete product:', productId);
-    // Use non-blocking confirmation
-    const confirmed = window.confirm('Are you sure you want to delete this product? This action cannot be undone.');
-    if (!confirmed) {
-      console.log('Delete cancelled by user');
-      return;
-    }
+    const confirmDelete = window.confirm(
+      'Are you sure you want to delete this product?\n' +
+      'This will also delete all its batches.'
+    );
+    if (!confirmDelete) return;
+
     try {
-      await deleteProduct(productId);
+      const result = await deleteProduct(productId);
+      if (result && result.success === false) {
+        alert('Could not delete product.\nReason: ' + result.message);
+        return;
+      }
+      // If deleteProduct doesn't return an object, assume success
       console.log('✅ Delete successful, product removed from inventory');
-      // Refresh the product list to ensure consistency
-      // Note: ProductContext already filters the deleted product
     } catch (error) {
-      console.error('❌ Delete failed:', error);
-      alert('Failed to delete product: ' + (error.message || 'Unknown error'));
+      alert('Delete failed: ' + (error.message || 'Unknown error'));
     }
   };
 

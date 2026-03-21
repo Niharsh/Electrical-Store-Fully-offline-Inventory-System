@@ -32,10 +32,6 @@ const Dashboard = () => {
   const [lowStockLoading, setLowStockLoading] = useState(false);
   const [lowStockError, setLowStockError] = useState('');
   
-  const [selectedExpiryRange, setSelectedExpiryRange] = useState(null);
-  const [expiringBatches, setExpiringBatches] = useState([]);
-  const [expiryLoading, setExpiryLoading] = useState(false);
-  const [expiryError, setExpiryError] = useState('');
   const [salesPurchasesPeriod, setSalesPurchasesPeriod] = useState('month');
 
   // Fetch low stock items from SQLite via IPC
@@ -74,66 +70,7 @@ const Dashboard = () => {
     fetchPurchasesSummary(salesPurchasesPeriod);
   }, [salesPurchasesPeriod]);
 
-  // Fetch expiring batches from SQLite via IPC
-  const fetchExpiringBatches = async (months) => {
-    setExpiryLoading(true);
-    setExpiryError('');
-    try {
-      if (!window?.api?.getExpiryOverview) {
-        throw new Error('window.api.getExpiryOverview not available');
-      }
-
-      const response = await window.api.getExpiryOverview(months);
-      console.log('✅ Expiring batches fetched:', response);
-      
-      if (response && response.success === false) {
-        throw new Error(response.message || 'Failed to fetch expiring batches');
-      }
-
-      setExpiringBatches(response.data?.batches || []);
-    } catch (error) {
-      console.error('❌ Error fetching expiring batches:', error);
-      setExpiryError('Failed to fetch expiring products');
-      setExpiringBatches([]);
-    } finally {
-      setExpiryLoading(false);
-    }
-  };
-
-  // Handle expiry filter click
-  const handleExpiryFilter = (months) => {
-    if (selectedExpiryRange === months) {
-      setSelectedExpiryRange(null);
-      setExpiringBatches([]);
-    } else {
-      setSelectedExpiryRange(months);
-      fetchExpiringBatches(months);
-    }
-  };
-
-  // Format date for display
-  const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  // Get expiry status
-  const getExpiryStatus = (expiryDate) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const expiry = new Date(expiryDate);
-    expiry.setHours(0, 0, 0, 0);
-    const daysLeft = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
-    
-    if (daysLeft < 0) return { text: 'Expired', color: 'text-red-700 bg-red-100' };
-    if (daysLeft <= 30) return { text: `Expires in ${daysLeft}d`, color: 'text-orange-700 bg-orange-100' };
-    if (daysLeft <= 90) return { text: `Expires in ${daysLeft}d`, color: 'text-yellow-700 bg-yellow-100' };
-    return { text: `Expires in ${daysLeft}d`, color: 'text-green-700 bg-green-100' };
-  };
+  // Expiry tracking - REMOVED (not applicable to electric shop)
 
   useEffect(() => {
     // Update stats from fetched data
@@ -191,7 +128,7 @@ const Dashboard = () => {
         <div className="card">
           <h2 className="text-2xl font-bold mb-4">⚠️ Low Stock Alert</h2>
           <p className="text-gray-600 mb-4">
-            {lowStockCount} medicine{lowStockCount !== 1 ? 's have' : ' has'} fallen below minimum stock level. Please reorder immediately.
+            {lowStockCount} product{lowStockCount !== 1 ? 's have' : ' has'} fallen below minimum stock level. Please reorder immediately.
           </p>
           
           {lowStockError && (
@@ -209,7 +146,7 @@ const Dashboard = () => {
               <table className="w-full text-sm">
                 <thead className="bg-gray-100">
                   <tr>
-                    <th className="text-left px-4 py-2">Medicine Name</th>
+                    <th className="text-left px-4 py-2">Product Name</th>
                     <th className="text-left px-4 py-2">Type</th>
                     <th className="text-center px-4 py-2">Current Stock</th>
                     <th className="text-center px-4 py-2">Minimum Required</th>
@@ -250,109 +187,10 @@ const Dashboard = () => {
             ✅ All Stock Levels Normal
           </h3>
           <p className="text-green-800">
-            All medicines are currently above their minimum stock levels. No reordering needed at this time.
+            All Electrical Products are currently above their minimum stock levels. No reordering needed at this time.
           </p>
         </div>
       )}
-
-      {/* Expiry Overview Section */}
-      <div className="card">
-        <h2 className="text-2xl font-bold mb-6">📅 Expiry Overview</h2>
-        <p className="text-gray-600 mb-4">Click on a timeframe to see batches expiring within that period:</p>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <button
-            onClick={() => handleExpiryFilter(6)}
-            className={`p-4 rounded-lg font-semibold transition ${
-              selectedExpiryRange === 6
-                ? 'bg-blue-600 text-white'
-                : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-            }`}
-          >
-            📆 Expiring in 6 Months
-          </button>
-          <button
-            onClick={() => handleExpiryFilter(3)}
-            className={`p-4 rounded-lg font-semibold transition ${
-              selectedExpiryRange === 3
-                ? 'bg-yellow-600 text-white'
-                : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-            }`}
-          >
-            ⏰ Expiring in 3 Months
-          </button>
-          <button
-            onClick={() => handleExpiryFilter(1)}
-            className={`p-4 rounded-lg font-semibold transition ${
-              selectedExpiryRange === 1
-                ? 'bg-red-600 text-white'
-                : 'bg-red-100 text-red-700 hover:bg-red-200'
-            }`}
-          >
-            🔴 Expiring in 1 Month
-          </button>
-        </div>
-
-        {/* Expiring Batches List */}
-        {selectedExpiryRange && (
-          <div>
-            <h3 className="font-semibold mb-4 text-lg">
-              Batches expiring in {selectedExpiryRange} month{selectedExpiryRange > 1 ? 's' : ''}:
-              <span className="ml-2 text-2xl font-bold text-blue-600">{expiringBatches.length}</span>
-            </h3>
-
-            {expiryError && (
-              <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded mb-4">
-                {expiryError}
-              </div>
-            )}
-
-            {expiryLoading ? (
-              <p className="text-gray-600 text-center py-8">Loading expiring batches...</p>
-            ) : expiringBatches.length === 0 ? (
-              <p className="text-gray-600 text-center py-8">
-                No batches expiring in this timeframe. Great!
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b-2 border-gray-300">
-                      <th className="text-left py-3">Product Name</th>
-                      <th className="text-left py-3">Type</th>
-                      <th className="text-center py-3">Batch No</th>
-                      <th className="text-center py-3">Quantity</th>
-                      <th className="text-center py-3">Expiry Date</th>
-                      <th className="text-center py-3">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {expiringBatches.map(batch => {
-                      const expiryStatus = getExpiryStatus(batch.expiry_date);
-                      return (
-                        <tr key={batch.id} className="border-b border-gray-100 hover:bg-gray-50">
-                          <td className="py-3 font-semibold">{batch.product_name}</td>
-                          <td className="py-3 text-gray-600 text-sm">
-                            {batch.product_type.charAt(0).toUpperCase() + batch.product_type.slice(1)}
-                          </td>
-                          <td className="py-3 text-center text-sm">{batch.batch_number}</td>
-                          <td className="py-3 text-center">{batch.quantity}</td>
-                          <td className="py-3 text-center">{formatDate(batch.expiry_date)}</td>
-                          <td className="py-3 text-center">
-                            <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${expiryStatus.color}`}>
-                              {expiryStatus.text}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* Sales & Purchases Overview Section */}
       <div className="card">

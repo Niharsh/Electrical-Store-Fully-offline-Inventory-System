@@ -41,6 +41,9 @@ contextBridge.exposeInMainWorld("api", {
   // Settings
   getSettings: () => ipcRenderer.invoke("get-settings"),
   saveSettings: (settingsData) => ipcRenderer.invoke("save-settings", settingsData),
+  pickQrImage: () => ipcRenderer.invoke("pick-qr-image"),
+  saveQrImage: (sourcePath) => ipcRenderer.invoke("save-qr-image", sourcePath),
+  getQrImage: () => ipcRenderer.invoke("get-qr-image"),
   
   // Product Types
   addProductType: (typeData) => ipcRenderer.invoke("add-product-type", typeData),
@@ -59,12 +62,20 @@ contextBridge.exposeInMainWorld("api", {
   getInvoiceById: (invoiceId) => ipcRenderer.invoke("get-invoice-by-id", invoiceId),
   deleteInvoice: (invoiceId) => ipcRenderer.invoke("delete-invoice", invoiceId),
   updateInvoice: (invoiceId, invoiceData) => ipcRenderer.invoke("update-invoice", invoiceId, invoiceData),
+  getNextInvoiceNumber: () => ipcRenderer.invoke("get-next-invoice-number"),
   printInvoice: () => ipcRenderer.invoke("print-invoice"), // ✅ Already correct
+
+  // Customers
+  getAllCustomers: () => ipcRenderer.invoke("get-all-customers"),
+  getCustomerById: (customerId) => ipcRenderer.invoke("get-customer-by-id", customerId),
+  searchCustomers: (searchTerm) => ipcRenderer.invoke("search-customers", searchTerm),
+  saveOrUpdateCustomer: (customerData) => ipcRenderer.invoke("save-or-update-customer", customerData),
+  updateCustomer: (customerId, customerData) => ipcRenderer.invoke("update-customer", customerId, customerData),
 
   // Dashboard
   getDashboardSummary: () => ipcRenderer.invoke("get-dashboard-summary"),
   getLowStockItems: () => ipcRenderer.invoke("get-low-stock-items"),
-  getExpiryOverview: (months) => ipcRenderer.invoke("get-expiry-overview", months),
+    // getExpiryOverview - REMOVED (not applicable to electric shop)
   getSalesOverview: (period) => ipcRenderer.invoke("get-sales-overview", period),
   getPurchaseOverview: (period) => ipcRenderer.invoke("get-purchase-overview", period),
   getRecentInvoices: (limit) => ipcRenderer.invoke("get-recent-invoices", limit),

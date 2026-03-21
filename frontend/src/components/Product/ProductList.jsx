@@ -18,7 +18,6 @@ const ProductList = ({ onEdit, onDelete }) => {
   // Handle product selection from autocomplete dropdown
   const handleSelectProduct = (product) => {
     console.log('✅ Product selected from autocomplete:', product.name);
-    // Trigger edit for the selected product
     if (onEdit) {
       onEdit(product);
     }
@@ -26,13 +25,7 @@ const ProductList = ({ onEdit, onDelete }) => {
 
   if (loading) return <LoadingSpinner />;
 
-  // Format product type for display
-  const formatProductType = (type) => {
-    return type
-      .split('_')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  };
+  // ✅ REMOVED: formatProductType() — no longer needed
 
   // Format date for display
   const formatDate = (dateString) => {
@@ -82,7 +75,7 @@ const ProductList = ({ onEdit, onDelete }) => {
       <h2 className="section-header">Product Inventory</h2>
 
       {/* Search Bar with Autocomplete */}
-      <ProductAutocomplete 
+      <ProductAutocomplete
         products={products}
         onSelectProduct={handleSelectProduct}
         isLoading={false}
@@ -104,8 +97,7 @@ const ProductList = ({ onEdit, onDelete }) => {
               <tr>
                 <th className="table-body w-10"></th>
                 <th className="table-body">Product Name</th>
-                <th className="table-body">Type</th>
-                <th className="table-body">Generic</th>
+                {/* ✅ REMOVED: Type column header */}
                 <th className="table-body text-right">Total Qty</th>
                 <th className="table-body text-center">MRP Range</th>
                 <th className="table-body text-center">Batches</th>
@@ -135,18 +127,8 @@ const ProductList = ({ onEdit, onDelete }) => {
                       </td>
                       <td className="table-body">
                         <div className="font-semibold text-gray-900">{product.name}</div>
-                        {product.salt_composition && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            {product.salt_composition}
-                          </div>
-                        )}
                       </td>
-                      <td className="table-body">
-                        <span className="badge badge-primary">
-                          {formatProductType(product.product_type)}
-                        </span>
-                      </td>
-                      <td className="table-body text-gray-600 text-sm">{product.generic_name || '-'}</td>
+                      {/* ✅ REMOVED: Type column cell */}
                       <td className="table-body text-right font-semibold text-lg">{totalQty}</td>
                       <td className="table-body text-center">
                         {minMrp ? (
@@ -154,7 +136,9 @@ const ProductList = ({ onEdit, onDelete }) => {
                             {minMrp === maxMrp ? (
                               <span className="font-medium">₹{minMrp.toFixed(2)}</span>
                             ) : (
-                              <span className="font-medium">₹{minMrp.toFixed(2)} - ₹{maxMrp.toFixed(2)}</span>
+                              <span className="font-medium">
+                                ₹{minMrp.toFixed(2)} - ₹{maxMrp.toFixed(2)}
+                              </span>
                             )}
                           </div>
                         ) : (
@@ -173,7 +157,7 @@ const ProductList = ({ onEdit, onDelete }) => {
                             e.preventDefault();
                             e.stopPropagation();
                             onEdit?.(product);
-                    }}
+                          }}
                           className="btn-secondary btn-sm text-xs"
                         >
                           Edit
@@ -194,7 +178,8 @@ const ProductList = ({ onEdit, onDelete }) => {
                     {/* Batch Details Row */}
                     {isExpanded && product.batches && product.batches.length > 0 && (
                       <tr className="bg-gray-50">
-                        <td colSpan="8" className="py-4">
+                        {/* ✅ FIXED: colSpan 8 → 7 (one column removed) */}
+                        <td colSpan="7" className="py-4">
                           <div className="ml-8">
                             <h4 className="font-semibold mb-4 text-gray-900">Batch Details</h4>
                             <div className="space-y-3">
@@ -205,7 +190,9 @@ const ProductList = ({ onEdit, onDelete }) => {
                                 >
                                   <div className="flex items-start justify-between">
                                     <div className="flex-1">
-                                      <div className="font-semibold text-gray-900">{batch.batch_number}</div>
+                                      <div className="font-semibold text-gray-900">
+                                        {batch.batch_number}
+                                      </div>
                                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-sm text-gray-600">
                                         <div><span className="font-medium">MRP:</span> ₹{parseFloat(batch.mrp).toFixed(2)}</div>
                                         <div><span className="font-medium">Selling:</span> ₹{parseFloat(batch.selling_rate).toFixed(2)}</div>
@@ -231,7 +218,9 @@ const ProductList = ({ onEdit, onDelete }) => {
                                           const purchaseHistory = getProductPurchaseHistory(product.name);
                                           return purchaseHistory && purchaseHistory.length > 0 ? (
                                             <div className="mt-3 pt-3 border-t border-gray-200">
-                                              <div className="text-xs font-semibold text-gray-700 mb-2">Purchase History from {wholesalers.find(w => w.id === batch.wholesaler_id)?.name || 'this wholesaler'}:</div>
+                                              <div className="text-xs font-semibold text-gray-700 mb-2">
+                                                Purchase History from {wholesalers.find(w => w.id === batch.wholesaler_id)?.name || 'this wholesaler'}:
+                                              </div>
                                               <div className="space-y-1">
                                                 {purchaseHistory
                                                   .filter(h => h.wholesalerId === batch.wholesaler_id)
@@ -258,7 +247,8 @@ const ProductList = ({ onEdit, onDelete }) => {
 
                     {isExpanded && (!product.batches || product.batches.length === 0) && (
                       <tr className="bg-gray-50">
-                        <td colSpan="8" className="py-4 text-center text-gray-500">
+                        {/* ✅ FIXED: colSpan 8 → 7 */}
+                        <td colSpan="7" className="py-4 text-center text-gray-500">
                           No batches found
                         </td>
                       </tr>

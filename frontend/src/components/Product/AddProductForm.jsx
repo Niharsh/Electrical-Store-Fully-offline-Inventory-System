@@ -6,25 +6,23 @@ import ErrorAlert from '../Common/ErrorAlert';
 
 
 const AddProductForm = ({ onProductAdded, editingProduct }) => {
-  const { addProduct, updateProduct, error, productTypes, hsns, fetchProductTypes, fetchHSNs } = useProducts();
+  // ✅ REMOVED: productTypes, fetchProductTypes, typesLoading — no longer needed
+  const { addProduct, updateProduct, error, hsns, fetchHSNs } = useProducts();
   const { selectedWholesalerId, setSelectedWholesalerId, recordPurchase, getLastPurchasePrice, wholesalers } = useWholesalers();
   const [formError, setFormError] = useState('');
   const [priceComparisonMsg, setPriceComparisonMsg] = useState('');
   const [loading, setLoading] = useState(false);
-  const [typesLoading, setTypesLoading] = useState(true);
+  // ✅ REMOVED: typesLoading state
   const [hsnLoading, setHsnLoading] = useState(true);
   const [formData, setFormData] = useState({
     name: '',
-    product_type: 'tablet',
+    // ✅ REMOVED: product_type field
     hsn: null,
-    generic_name: '',
     manufacturer: '',
-    salt_composition: '',
-    // Minimum stock alert (optional). If empty => treated as 10 by backend.
     min_stock_level: '',
-    unit: 'pc',
+    unit: 'PCS',
     description: '',
-    batches: [], // Array of batch objects
+    batches: [],
   });
   const isEditMode = Boolean(formData?.id);
   const [batchForm, setBatchForm] = useState({
@@ -36,25 +34,20 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
     expiry_date: '',
   });
 
-  // Load product types and HSN codes on component mount
+  // ✅ REMOVED: fetchProductTypes() from this effect
   useEffect(() => {
     const loadData = async () => {
       try {
-        setTypesLoading(true);
         setHsnLoading(true);
-        await Promise.all([
-          fetchProductTypes(),
-          fetchHSNs(),
-        ]);
+        await fetchHSNs();
       } catch (err) {
-        console.error('Failed to load product types or HSN codes:', err);
+        console.error('Failed to load HSN codes:', err);
       } finally {
-        setTypesLoading(false);
         setHsnLoading(false);
       }
     };
     loadData();
-  }, [fetchProductTypes, fetchHSNs]);
+  }, [fetchHSNs]);
 
   // 🔁 Prefill form when editing a product
   useEffect(() => {
@@ -62,17 +55,15 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
       setFormData({
         id: editingProduct.id,
         name: editingProduct.name || '',
-        product_type: editingProduct.product_type || 'tablet',
+        // ✅ REMOVED: product_type field
         hsn: editingProduct.hsn || null,
-        generic_name: editingProduct.generic_name || '',
         manufacturer: editingProduct.manufacturer || '',
-        salt_composition: editingProduct.salt_composition || '',
         min_stock_level: editingProduct.min_stock_level ?? editingProduct.minStockAlert ?? '',
-        unit: editingProduct.unit || 'pc',
+        unit: editingProduct.unit || 'PCS',
         description: editingProduct.description || '',
         batches: editingProduct.batches || [],
       });
-        if (editingProduct.batches?.length > 0) {
+      if (editingProduct.batches?.length > 0) {
         setSelectedWholesalerId(editingProduct.batches[0].wholesaler_id);
       }
     }
@@ -100,13 +91,11 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
     setFormError('');
     setPriceComparisonMsg('');
 
-    // Validate wholesaler selection
     if (!selectedWholesalerId && !isEditMode) {
       setFormError('Please select wholesaler before adding product batches');
       return;
     }
 
-    // Validate batch fields
     if (!batchForm.batch_number.trim()) {
       setFormError('Batch number is required');
       return;
@@ -134,26 +123,18 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
       setFormError('Selling rate cannot be greater than MRP');
       return;
     }
-    if (!batchForm.expiry_date) {
-      setFormError('Expiry date is required');
-      return;
-    }
 
-
-
-    // Check for duplicate batch number
     if (
       formData.batches.find(
         b =>
           b.batch_number === batchForm.batch_number.trim() &&
           b.wholesaler_id === selectedWholesalerId
-        )
-      ) {
-          setFormError('This batch already exists for the selected wholesaler');
-          return;
-        }
+      )
+    ) {
+      setFormError('This batch already exists for the selected wholesaler');
+      return;
+    }
 
-    // Check for price differences from previous purchases of this product from same wholesaler
     const lastPurchase = getLastPurchasePrice(selectedWholesalerId, formData.name.trim());
     if (lastPurchase && Math.abs(lastPurchase.costPrice - parseFloat(batchForm.cost_price)) > 0.01) {
       setPriceComparisonMsg(
@@ -161,7 +142,6 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
       );
     }
 
-    // Add batch to product
     const newBatch = {
       batch_number: batchForm.batch_number.trim(),
       mrp: parseFloat(batchForm.mrp),
@@ -170,7 +150,6 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
       quantity: parseInt(batchForm.quantity),
       expiry_date: batchForm.expiry_date || null,
       wholesaler_id: selectedWholesalerId,
-      // purchase_date: new Date().toISOString().split('T')[0],
     };
 
     setFormData(prev => ({
@@ -178,7 +157,6 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
       batches: [...prev.batches, newBatch]
     }));
 
-    // Reset batch form fields
     setBatchForm({
       batch_number: '',
       mrp: '',
@@ -189,7 +167,6 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
     });
   };
 
-  // Remove batch from product
   const handleRemoveBatch = (index) => {
     setFormData(prev => ({
       ...prev,
@@ -203,12 +180,11 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
     setLoading(true);
 
     try {
-      // Validate required fields
-      if (!formData.name || !formData.product_type) {
-        throw new Error('Product name and type are required');
+      // ✅ FIXED: removed product_type from required field check
+      if (!formData.name) {
+        throw new Error('Product name is required');
       }
 
-      // Validate minimum stock alert if provided
       if (formData.min_stock_level !== '' && formData.min_stock_level !== null) {
         const ms = Number(formData.min_stock_level);
         if (!Number.isFinite(ms) || ms < 0) {
@@ -220,11 +196,9 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
         throw new Error('At least one batch is required');
       }
 
-      // Create payload with batches
       const payload = {
         ...formData,
         name: formData.name.trim(),
-        // Ensure min_stock_level is a number and fallback to 10 when empty or invalid
         min_stock_level: (() => {
           const v = formData.min_stock_level;
           if (v === null || v === undefined || String(v).trim() === '') return 10;
@@ -241,13 +215,9 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
       } else {
         savedProduct = await addProduct(payload);
       }
-  
+
       console.log('✅ Product saved:', savedProduct);
 
-      console.log('✅ AddProductForm: Product saved successfully:', savedProduct);
-      
-      
-      // Record purchases in wholesaler context for each batch
       formData.batches.forEach(batch => {
         if (batch.wholesaler_id) {
           recordPurchase(
@@ -258,18 +228,15 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
           );
         }
       });
-      
-      // Reset form
+
+      // ✅ FIXED: reset form no longer includes product_type, generic_name, salt_composition
       if (!isEditMode) {
         setFormData({
           name: '',
-          product_type: 'tablet',
           hsn: null,
-          generic_name: '',
           manufacturer: '',
-          salt_composition: '',
           min_stock_level: '',
-          unit: 'pc',
+          unit: 'PCS',
           description: '',
           batches: [],
         });
@@ -283,7 +250,6 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
         });
         setPriceComparisonMsg('');
       }
-
 
       if (onProductAdded) {
         onProductAdded(savedProduct);
@@ -301,7 +267,6 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
         {editingProduct ? 'Edit Product' : 'Add New Product'}
       </h2>
 
-
       {(formError || error) && (
         <ErrorAlert error={formError || error} onDismiss={() => setFormError('')} />
       )}
@@ -317,6 +282,7 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
         )}
       </div>
 
+      {/* ✅ Step 2: Product Details — Product Type field REMOVED */}
       <h3 className="section-subheader divider-section">Step 2: Product Details</h3>
       <div className="grid-cols-form">
         <div>
@@ -327,29 +293,8 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
             value={formData.name}
             onChange={handleChange}
             className="input-field"
-            placeholder="e.g., Aspirin 500mg"
+            placeholder="e.g., Copper Wire 1.5mm"
           />
-        </div>
-
-        <div>
-          <label className="form-label form-label-required">Product Type</label>
-          {typesLoading ? (
-            <div className="input-field bg-gray-100 text-gray-500 py-2.5">Loading types...</div>
-          ) : (
-            <select
-              name="product_type"
-              value={formData.product_type}
-              onChange={handleChange}
-              className="input-field"
-            >
-              <option value="">-- Select Product Type --</option>
-              {productTypes.map(type => (
-                <option key={type.name} value={type.name}>
-                  {type.label}
-                </option>
-              ))}
-            </select>
-          )}
         </div>
 
         <div>
@@ -385,18 +330,6 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
         </div>
 
         <div>
-          <label className="form-label">Generic Name</label>
-          <input
-            type="text"
-            name="generic_name"
-            value={formData.generic_name}
-            onChange={handleChange}
-            className="input-field"
-            placeholder="e.g., Acetylsalicylic Acid"
-          />
-        </div>
-
-        <div>
           <label className="form-label">Manufacturer</label>
           <input
             type="text"
@@ -404,34 +337,28 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
             value={formData.manufacturer}
             onChange={handleChange}
             className="input-field"
-            placeholder="e.g., Pharma Ltd"
+            placeholder="e.g., Havells, Finolex, Polycab"
           />
         </div>
 
-        {(formData.product_type === 'tablet' || formData.product_type === 'capsule') && (
-          <div>
-            <label className="form-label">Salt/Composition</label>
-            <input
-              type="text"
-              name="salt_composition"
-              value={formData.salt_composition}
-              onChange={handleChange}
-              className="input-field"
-              placeholder="e.g., Paracetamol 500mg"
-            />
-          </div>
-        )}
-
         <div>
           <label className="form-label">Unit</label>
-          <input
-            type="text"
+          <select
             name="unit"
             value={formData.unit}
             onChange={handleChange}
             className="input-field"
-            placeholder="e.g., pc, bottle, gm, ml"
-          />
+          >
+            <option value="PCS">PCS - Pieces</option>
+            <option value="PKT">PKT - Packet</option>
+            <option value="BOX">BOX - Box</option>
+            <option value="ROLL">ROL - Roll</option>
+            <option value="MTR">MTR - Meter</option>
+            <option value="KG">KG - Kilogram</option>
+            <option value="SET">SET - Set</option>
+            <option value="PAIR">PAIR - Pair</option>
+            <option value="BUNDLE">BUNDLE - Bundle</option>
+          </select>
         </div>
 
         <div>
@@ -464,7 +391,7 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
       {/* Batch Management Section */}
       <div className="divider-section">
         <h3 className="section-subheader">Step 3: Add Batches to This Product</h3>
-        
+
         {formError && formData.batches.length === 0 && (
           <div className="alert alert-danger">
             {formError}
@@ -543,7 +470,7 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Expiry Date</label>
+              <label className="form-label">Expiry Date (Optional)</label>
               <input
                 type="date"
                 name="expiry_date"
@@ -572,23 +499,21 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
         {/* Batches List */}
         {formData.batches.length > 0 && (
           <div className="bg-gray-50 p-5 rounded-lg border border-gray-200">
-            <h4 className="font-semibold mb-4 text-gray-900">Batches Added <span className="badge badge-success ml-2">{formData.batches.length}</span></h4>
+            <h4 className="font-semibold mb-4 text-gray-900">
+              Batches Added{' '}
+              <span className="badge badge-success ml-2">{formData.batches.length}</span>
+            </h4>
             <div className="space-y-3">
               {formData.batches.map((batch, index) => (
                 <div
                   key={index}
                   className="p-4 bg-white border-l-4 border-green-600 rounded space-y-3"
                 >
-                
-                  {/* Batch number (READ ONLY) */}
                   <div className="font-semibold text-gray-900">
                     Batch: {batch.batch_number}
                   </div>
 
-                  {/* Editable fields */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-
-                    {/* Selling Rate */}
                     <div>
                       <label className="text-sm font-medium">Selling Rate (₹)</label>
                       <input
@@ -606,8 +531,7 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
                         className="input-field"
                       />
                     </div>
-                      
-                    {/* Quantity */}
+
                     <div>
                       <label className="text-sm font-medium">Quantity</label>
                       <input
@@ -625,8 +549,7 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
                         className="input-field"
                       />
                     </div>
-                      
-                    {/* Expiry Date */}
+
                     <div>
                       <label className="text-sm font-medium">Expiry Date</label>
                       <input
@@ -645,22 +568,19 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
                       />
                     </div>
                   </div>
-                      
-                  {/* Static info */}
+
                   <div className="text-sm text-gray-600 grid grid-cols-2 md:grid-cols-3 gap-2">
                     <div><strong>MRP:</strong> ₹{batch.mrp}</div>
                     <div><strong>Cost:</strong> ₹{batch.cost_price}</div>
                     <div><strong>Unit:</strong> {formData.unit}</div>
                   </div>
-                      
-                  {/* Wholesaler */}
+
                   {batch.wholesaler_id && (
                     <div className="text-sm text-purple-600 font-medium">
                       📦 Wholesaler: {wholesalers.find(w => w.id === batch.wholesaler_id)?.name || 'Unknown'}
                     </div>
                   )}
 
-                  {/* Delete batch */}
                   <button
                     onClick={() => handleRemoveBatch(index)}
                     type="button"
@@ -668,7 +588,6 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
                   >
                     Delete Batch
                   </button>
-                
                 </div>
               ))}
             </div>

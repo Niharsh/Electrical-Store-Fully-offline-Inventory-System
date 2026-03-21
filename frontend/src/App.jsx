@@ -9,6 +9,7 @@ import { WholesalersProvider } from './context/WholesalersContext';
 import Header from './components/Common/Header';
 import Navigation from './components/Common/Navigation';
 import ProtectedRoute from './components/Common/ProtectedRoute';
+import BillingForm from './components/Billing/BillingForm';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import Billing from './pages/Billing';
@@ -86,12 +87,25 @@ function AuthenticatedLayout() {
                     }
                   />
 
+                  
                   <Route
                     path="/billing/invoices/:id"
                     element={
                       <ProtectedRoute>
                         <main className="w-full px-6 py-8 lg:px-8">
                           <InvoiceDetail />
+                        </main>
+                      </ProtectedRoute>
+                    }
+                  />
+                  
+                  {/* ── Edit Invoice ── NEW */}
+                  <Route
+                    path="/billing/invoices/:id/edit"
+                    element={
+                      <ProtectedRoute>
+                        <main className="w-full px-6 py-8 lg:px-8">
+                          <BillingForm />
                         </main>
                       </ProtectedRoute>
                     }

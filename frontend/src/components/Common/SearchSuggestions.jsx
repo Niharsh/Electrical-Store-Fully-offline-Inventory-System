@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 
 /**
  * SearchSuggestions - Live autocomplete for Navigation search bar
- * 
+ *
  * Features:
  * - Shows suggestions as user types (after 1 character) - SQLite powered
- * - Displays product name + type in dropdown
+ * - Displays product name in dropdown
  * - Debounced suggestions (300ms)
  * - Keyboard navigation (arrow keys, Enter, Escape)
  * - Click outside to close
@@ -13,21 +13,19 @@ import React, { useState, useEffect, useRef } from 'react';
  * - No existing search flow disruption
  */
 const SearchSuggestions = ({ searchQuery, onSelectSuggestion }) => {
-  const [suggestions, setSuggestions] = useState([]);
-  const [isOpen, setIsOpen] = useState(false);
+  const [suggestions, setSuggestions]       = useState([]);
+  const [isOpen, setIsOpen]                 = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const [isLoading, setIsLoading] = useState(false);
-  const [debounceTimer, setDebounceTimer] = useState(null);
+  const [isLoading, setIsLoading]           = useState(false);
+  const [debounceTimer, setDebounceTimer]   = useState(null);
   const dropdownRef = useRef(null);
 
   // Fetch suggestions with debounce - using SQLite via IPC
   useEffect(() => {
-    // Clear existing timer
     if (debounceTimer) {
       clearTimeout(debounceTimer);
     }
 
-    // Close dropdown if query is empty
     if (!searchQuery || searchQuery.trim().length === 0) {
       setSuggestions([]);
       setIsOpen(false);
@@ -35,7 +33,6 @@ const SearchSuggestions = ({ searchQuery, onSelectSuggestion }) => {
       return;
     }
 
-    // Set new debounce timer
     const timer = setTimeout(async () => {
       try {
         console.log(`🔍 Fetching suggestions for: "${searchQuery}"`);
@@ -51,12 +48,10 @@ const SearchSuggestions = ({ searchQuery, onSelectSuggestion }) => {
           throw new Error(response.message || 'Failed to fetch suggestions');
         }
 
-        // Extract results from IPC response
         const items = response?.data?.results || [];
 
         console.log(`✅ Got ${items.length} suggestions (limited to 8)`);
 
-        // Limit to 8 suggestions for dropdown
         setSuggestions(items.slice(0, 8));
         setIsOpen(items.length > 0);
         setHighlightedIndex(-1);
@@ -67,7 +62,7 @@ const SearchSuggestions = ({ searchQuery, onSelectSuggestion }) => {
       } finally {
         setIsLoading(false);
       }
-    }, 300); // 300ms debounce
+    }, 300);
 
     setDebounceTimer(timer);
 
@@ -154,20 +149,16 @@ const SearchSuggestions = ({ searchQuery, onSelectSuggestion }) => {
               <div
                 key={product.id}
                 onClick={() => handleSelectSuggestion(product)}
-                className={`px-4 py-2 cursor-pointer flex items-center justify-between transition-colors border-b border-gray-100 last:border-b-0 ${
+                className={`px-4 py-2 cursor-pointer flex items-center transition-colors border-b border-gray-100 last:border-b-0 ${
                   index === highlightedIndex
                     ? 'bg-sky-100 text-gray-900'
                     : 'hover:bg-gray-50 text-gray-800'
                 }`}
               >
+                {/* ✅ REMOVED: salt_composition / generic_name subtitle */}
+                {/* ✅ REMOVED: product_type on the right */}
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm truncate">{product.name}</div>
-                  <div className="text-xs text-gray-500 truncate">
-                    {product.generic_name || product.salt_composition || 'No composition'}
-                  </div>
-                </div>
-                <div className="text-xs text-gray-400 ml-2 flex-shrink-0 whitespace-nowrap">
-                  {product.product_type?.replace(/_/g, ' ') || ''}
                 </div>
               </div>
             ))

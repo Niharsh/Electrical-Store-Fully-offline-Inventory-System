@@ -13,6 +13,7 @@ const InvoiceDetail = () => {
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [qrDataUrl, setQrDataUrl] = useState(null);
 
   useEffect(() => {
     const fetchInvoice = async () => {
@@ -33,6 +34,26 @@ const InvoiceDetail = () => {
     };
     fetchInvoice();
   }, [id]);
+
+  // Load QR image for payments
+  useEffect(() => {
+    const loadQrImage = async () => {
+      try {
+        if (!window?.api?.getQrImage) {
+          console.warn('[InvoiceDetail] window.api.getQrImage not available');
+          return;
+        }
+        const result = await window.api.getQrImage();
+        if (result.success && result.dataUrl) {
+          setQrDataUrl(result.dataUrl);
+        }
+      } catch (err) {
+        console.log('[InvoiceDetail] QR image not found', err);
+      }
+    };
+
+    loadQrImage();
+  }, []);
 
   const handlePrint = async () => {
     try {
@@ -76,7 +97,7 @@ const InvoiceDetail = () => {
 
       {/* Invoice area - forced visible by handlePrint before PDF capture */}
       <div id="invoice-print-area" className="invoice-print-wrapper">
-        <InvoicePrint invoice={invoice} shop={shopData} />
+        <InvoicePrint invoice={invoice} shop={shopData} qrDataUrl={qrDataUrl} />
       </div>
     </>
   );

@@ -94,7 +94,7 @@ const Navigation = () => {
               </svg>
               <input
                 type="text"
-                placeholder="Search product or salt..."
+                placeholder="Search product or brand..."
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);

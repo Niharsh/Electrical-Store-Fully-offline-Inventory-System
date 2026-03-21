@@ -635,6 +635,28 @@ ipcMain.handle("delete-wholesaler", async (event, id) => {
   }
 });
 
+// Invoice number helpers
+function getFinancialYear() {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+  if (month >= 4) {
+    return `${year}-${String(year + 1).slice(-2)}`;
+  } else {
+    return `${year - 1}-${String(year).slice(-2)}`;
+  }
+}
+
+ipcMain.handle('get-next-invoice-number', () => {
+  try {
+    const invoiceNumber = db.getNextInvoiceNumber();
+    return { success: true, invoice_number: invoiceNumber };
+  } catch (error) {
+    console.error('[ipc] get-next-invoice-number error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // IPC: get-settings - fetch shop settings from SQLite
 ipcMain.handle("get-settings", async (event) => {
   try {
@@ -649,15 +671,115 @@ ipcMain.handle("get-settings", async (event) => {
 });
 
 // IPC: save-settings - insert or update shop settings in SQLite
+// ⚠️  IMPORTANT: Always preserve bank_qr_path from existing DB row.
+//     The ShopDetails form does NOT include bank_qr_path in its payload,
+//     so a plain db.saveSettings(settingsData) would wipe the QR path to ''.
 ipcMain.handle("save-settings", async (event, settingsData) => {
   try {
     console.log('[ipc] save-settings called with:', settingsData);
-    const saved = await db.saveSettings(settingsData);
-    console.log('[ipc] save-settings saved:', saved);
+
+    // ── Step 1: Read the current row BEFORE any write ─────────────────────
+    const existing = await db.getSettings();
+    const existingQrPath = existing?.bank_qr_path || '';
+    console.log('[ipc] save-settings: existingQrPath =', existingQrPath);
+    console.log('[ipc] save-settings: incomingQrPath =', settingsData.bank_qr_path);
+
+    // ── Step 2: Merge — never let an empty/missing value overwrite a good path
+    const mergedData = {
+      ...settingsData,
+      bank_qr_path: settingsData.bank_qr_path || existingQrPath,
+    };
+    console.log('[ipc] save-settings: mergedQrPath =', mergedData.bank_qr_path);
+
+    // ── Step 3: Save the merged payload ───────────────────────────────────
+    const saved = await db.saveSettings(mergedData);
+    console.log('[ipc] save-settings saved successfully');
     return { success: true, message: '', data: saved };
+
   } catch (err) {
     console.error('[ipc] save-settings error:', err);
     return { success: false, message: err.message, data: null };
+  }
+});
+
+// IPC: pick-qr-image - open dialog to select QR image file
+ipcMain.handle("pick-qr-image", async (event) => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      filters: [
+        { name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }
+      ]
+    });
+    return {
+      canceled: result.canceled,
+      path: result.filePaths[0] || null
+    };
+  } catch (err) {
+    console.error('[ipc] pick-qr-image error:', err);
+    return { canceled: true, path: null };
+  }
+});
+
+// IPC: save-qr-image - copy QR image to userData and save path
+ipcMain.handle("save-qr-image", async (event, sourcePath) => {
+  try {
+    console.log('[ipc] save-qr-image called with sourcePath:', sourcePath);
+    
+    const imagesDir = path.join(app.getPath('userData'), 'images');
+    // Create images directory if it doesn't exist
+    if (!fs.existsSync(imagesDir)) {
+      fs.mkdirSync(imagesDir, { recursive: true });
+    }
+    
+    const destPath = path.join(imagesDir, 'bank_qr.png');
+    fs.copyFileSync(sourcePath, destPath);
+    console.log('[ipc] save-qr-image: file copied to', destPath);
+    
+    // Fetch current settings and merge with QR path
+    const currentSettings = await db.getSettings();
+    console.log('[ipc] save-qr-image: current settings retrieved');
+    
+    const updatedSettings = {
+      ...currentSettings,
+      bank_qr_path: destPath
+    };
+    
+    // Save the updated settings with QR path
+    await db.saveSettings(updatedSettings);
+    console.log('[ipc] save-qr-image: settings saved');
+    
+    return { success: true, path: destPath };
+  } catch (err) {
+    console.error('[ipc] save-qr-image error:', err);
+    return { success: false, path: null, error: err.message };
+  }
+});
+
+// IPC: get-qr-image - read QR image as base64 data URL
+ipcMain.handle("get-qr-image", async (event) => {
+  try {
+    console.log('[ipc] get-qr-image called');
+    
+    const settings = await db.getSettings();
+    const qrPath = settings?.bank_qr_path;
+    
+    console.log('[ipc] get-qr-image: qrPath from settings:', qrPath);
+    
+    if (!qrPath || !fs.existsSync(qrPath)) {
+      console.log('[ipc] get-qr-image: QR file not found at', qrPath);
+      return { success: false, dataUrl: null };
+    }
+    
+    const fileBuffer = fs.readFileSync(qrPath);
+    const base64 = fileBuffer.toString('base64');
+    const dataUrl = `data:image/png;base64,${base64}`;
+    
+    console.log('[ipc] get-qr-image: successfully read QR file, dataUrl length:', dataUrl.length);
+    return { success: true, dataUrl };
+  } catch (err) {
+    console.error('[ipc] get-qr-image error:', err);
+    return { success: false, dataUrl: null, error: err.message };
   }
 });
 
@@ -753,10 +875,14 @@ ipcMain.handle("delete-hsn-code", async (event, hsnCode) => {
 });
 
 // IPC: create-invoice - create an invoice with items and deduct stock
-ipcMain.handle("create-invoice", async (event, invoiceData) => {
+ipcMain.handle("create-invoice", (event, invoiceData) => {
   try {
     console.log('[ipc] create-invoice called with:', invoiceData);
-    const newInvoice = await db.createInvoice(invoiceData);
+    if (!invoiceData.invoice_number || invoiceData.invoice_number.trim() === '') {
+      invoiceData.invoice_number = db.getNextInvoiceNumber();
+      console.log('[ipc] create-invoice generated invoice_number:', invoiceData.invoice_number);
+    }
+    const newInvoice = db.createInvoice(invoiceData);
     console.log('[ipc] create-invoice created:', newInvoice);
     return { success: true, message: '', data: newInvoice };
   } catch (err) {
@@ -766,10 +892,10 @@ ipcMain.handle("create-invoice", async (event, invoiceData) => {
 });
 
 // IPC: get-invoices - fetch all invoices with items
-ipcMain.handle("get-invoices", async (event) => {
+ipcMain.handle("get-invoices", (event) => {
   try {
     console.log('[ipc] get-invoices called');
-    const invoices = await db.getInvoices();
+    const invoices = db.getInvoices();
     console.log('[ipc] get-invoices returned', invoices.length, 'invoices');
     return { success: true, message: '', data: { results: invoices, count: invoices.length } };
   } catch (err) {
@@ -779,10 +905,10 @@ ipcMain.handle("get-invoices", async (event) => {
 });
 
 // IPC: get-invoice-by-id - fetch a single invoice with items
-ipcMain.handle("get-invoice-by-id", async (event, invoiceId) => {
+ipcMain.handle("get-invoice-by-id", (event, invoiceId) => {
   try {
     console.log('[ipc] get-invoice-by-id called with id:', invoiceId);
-    const invoice = await db.getInvoiceById(invoiceId);
+    const invoice = db.getInvoiceById(invoiceId);
     if (!invoice) {
       return { success: false, message: 'Invoice not found', data: null };
     }
@@ -795,10 +921,10 @@ ipcMain.handle("get-invoice-by-id", async (event, invoiceId) => {
 });
 
 // IPC: delete-invoice - delete invoice and restore stock
-ipcMain.handle("delete-invoice", async (event, invoiceId) => {
+ipcMain.handle("delete-invoice", (event, invoiceId) => {
   try {
     console.log('[ipc] delete-invoice called with id:', invoiceId);
-    await db.deleteInvoice(invoiceId);
+    db.deleteInvoice(invoiceId);
     console.log('[ipc] delete-invoice deleted id:', invoiceId);
     return { success: true, message: '', data: { success: true } };
   } catch (err) {
@@ -808,14 +934,81 @@ ipcMain.handle("delete-invoice", async (event, invoiceId) => {
 });
 
 // IPC: update-invoice - update invoice metadata
-ipcMain.handle("update-invoice", async (event, invoiceId, invoiceData) => {
+ipcMain.handle("update-invoice", (event, invoiceId, invoiceData) => {
   try {
     console.log('[ipc] update-invoice called with id:', invoiceId, 'data:', invoiceData);
-    const updated = await db.updateInvoice(invoiceId, invoiceData);
+    const updated = db.updateInvoice(invoiceId, invoiceData);
     console.log('[ipc] update-invoice updated:', updated);
     return { success: true, message: '', data: updated };
   } catch (err) {
     console.error('[ipc] update-invoice error:', err);
+    return { success: false, message: err.message, data: null };
+  }
+});
+
+// ========== CUSTOMER IPC HANDLERS ==========
+
+// IPC: get-all-customers - fetch all customers for dropdown
+ipcMain.handle("get-all-customers", async (event) => {
+  try {
+    console.log('[ipc] get-all-customers called');
+    const customers = await db.getAllCustomers();
+    console.log('[ipc] get-all-customers returned', customers.length, 'customers');
+    return { success: true, data: customers };
+  } catch (err) {
+    console.error('[ipc] get-all-customers error:', err);
+    return { success: false, message: err.message, data: [] };
+  }
+});
+
+// IPC: get-customer-by-id - fetch single customer details
+ipcMain.handle("get-customer-by-id", async (event, customerId) => {
+  try {
+    console.log('[ipc] get-customer-by-id called with id:', customerId);
+    const customer = await db.getCustomerById(customerId);
+    console.log('[ipc] get-customer-by-id returned customer:', customer?.customer_name);
+    return { success: true, data: customer };
+  } catch (err) {
+    console.error('[ipc] get-customer-by-id error:', err);
+    return { success: false, message: err.message, data: null };
+  }
+});
+
+// IPC: search-customers - search customers by name or phone
+ipcMain.handle("search-customers", async (event, searchTerm) => {
+  try {
+    console.log('[ipc] search-customers called with term:', searchTerm);
+    const customers = await db.searchCustomers(searchTerm);
+    console.log('[ipc] search-customers returned', customers.length, 'matching customers');
+    return { success: true, data: customers };
+  } catch (err) {
+    console.error('[ipc] search-customers error:', err);
+    return { success: false, message: err.message, data: [] };
+  }
+});
+
+// IPC: save-or-update-customer - create new or update existing customer
+ipcMain.handle("save-or-update-customer", async (event, customerData) => {
+  try {
+    console.log('[ipc] save-or-update-customer called');
+    const customer = await db.saveOrUpdateCustomer(customerData);
+    console.log('[ipc] save-or-update-customer saved customer:', customer?.id);
+    return { success: true, data: customer };
+  } catch (err) {
+    console.error('[ipc] save-or-update-customer error:', err);
+    return { success: false, message: err.message, data: null };
+  }
+});
+
+// IPC: update-customer - update existing customer
+ipcMain.handle("update-customer", async (event, customerId, customerData) => {
+  try {
+    console.log('[ipc] update-customer called with id:', customerId);
+    const customer = await db.updateCustomer(customerId, customerData);
+    console.log('[ipc] update-customer updated customer:', customer?.id);
+    return { success: true, data: customer };
+  } catch (err) {
+    console.error('[ipc] update-customer error:', err);
     return { success: false, message: err.message, data: null };
   }
 });
@@ -848,18 +1041,7 @@ ipcMain.handle("get-low-stock-items", async (event) => {
   }
 });
 
-// IPC: get-expiry-overview - fetch batches expiring within N months
-ipcMain.handle("get-expiry-overview", async (event, months = 1) => {
-  try {
-    console.log('[ipc] get-expiry-overview called with months:', months);
-    const result = await db.getExpiryOverview(months);
-    console.log('[ipc] get-expiry-overview result:', result);
-    return result;
-  } catch (err) {
-    console.error('[ipc] get-expiry-overview error:', err);
-    return { success: false, message: err.message, data: { batches: [] } };
-  }
-});
+// IPC: get-expiry-overview - REMOVED (not applicable to electric shop)
 
 // IPC: get-sales-overview - fetch sales summary for period
 ipcMain.handle("get-sales-overview", async (event, period = 'month') => {
@@ -1020,18 +1202,8 @@ ipcMain.handle("get-owner", async (event) => {
   }
 });
 
-// IPC: reset-password-recovery - reset password using recovery code
-ipcMain.handle("reset-password-recovery", async (event, username, recoveryCode, newPassword) => {
-  try {
-    console.log('[ipc] reset-password-recovery called for username:', username);
-    const owner = await db.resetPasswordWithRecoveryCode(username, recoveryCode, newPassword);
-    console.log('[ipc] reset-password-recovery successful');
-    return { success: true, data: owner };
-  } catch (err) {
-    console.error('[ipc] reset-password-recovery error:', err);
-    return { success: false, message: err.message || 'Password reset failed', data: null };
-  }
-});
+// IPC: reset-password-recovery - DISABLED (Admin Recovery Code removed)
+// Recovery code functionality has been removed from the system
 
 // ========== DATABASE BACKUP/RESTORE IPC HANDLERS ==========
 

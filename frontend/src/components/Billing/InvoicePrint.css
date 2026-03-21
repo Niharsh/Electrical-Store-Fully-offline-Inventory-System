@@ -1,657 +1,477 @@
-/* ════════════════════════════════════════════════════════════
-   THERMAL PRINTER INVOICE - Half A4 Format (148mm width)
-   Optimized for medical store receipts
-   ════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════
+   InvoicePrint.css  –  Formal Bordered A4 Tax Invoice
+   ═══════════════════════════════════════════════════════════════════ */
 
-/* ════════════════════════════════════════════════════════════
-   SCREEN VIEW - Display thermal invoice on screen
-   ════════════════════════════════════════════════════════════ */
-@media screen {
-  .invoice-print.thermal-invoice {
-    display: block;
-    background: white;
-    border: 2px solid #333;
-    width: 148mm;
-    height: auto;
-    margin: 20px auto;
-    padding: 5mm;
-    font-family: 'Courier New', monospace;
-    color: #000;
-    line-height: 1.3;
-    font-size: 9px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    overflow: visible;
-  }
-
-  .invoice-control-bar {
-    display: block;
-    background: white;
-    padding: 15px 20px;
-    margin: 0 auto;
-    max-width: 900px;
-    border-bottom: 1px solid #ccc;
-  }
-}
-
-/* ════════════════════════════════════════════════════════════
-   PRINT VIEW - Optimize for thermal printer output
-   ════════════════════════════════════════════════════════════ */
-@media print {
-  * {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-    color-adjust: exact !important;
-  }
-
-  html, body {
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: white !important;
-  }
-
-  /* ✅ CORRECT: body's direct child is #root not <main> */
-  body > * {
-    display: none !important;
-  }
-
-  /* ✅ Show #root → the whole React tree */
-  body > #root {
-    display: block !important;
-  }
-
-  /* ✅ Hide everything inside #root */
-  #root > * {
-    display: none !important;
-  }
-
-  /* ✅ Show only the invoice chain inside #root */
-  #root > * > * > * > * > * > * > #invoice-print-area,
-  #root > * > * > * > * > * > * > .invoice-print-wrapper,
-  #invoice-print-area,
-  .invoice-print-wrapper {
-    display: block !important;
-    visibility: visible !important;
-  }
-
-  /* ✅ Show the invoice itself */
-  .invoice-print,
-  .invoice-print.thermal-invoice {
-    display: block !important;
-    visibility: visible !important;
-    width: 148mm !important;
-    height: auto !important;
-    margin: 0 !important;
-    padding: 4mm !important;
-    background: white !important;
-    position: static !important;
-    overflow: visible !important;
-    font-size: 7px !important;
-  }
-
-  /* ✅ Make ALL ancestors of invoice visible */
-  #invoice-print-area *,
-  .invoice-print-wrapper * {
-    visibility: visible !important;
-  }
-
-  /* ✅ Hide control bar and nav */
-  .invoice-control-bar,
-  .print-hidden,
-  header,
-  nav {
-    display: none !important;
-  }
-
-  @page {
-    size: 148mm 210mm;
-    margin: 2mm;
-  }
-
-  .thermal-items-table {
-    font-size: 7px !important;
-  }
-
-  .thermal-items-table thead th {
-    padding: 1px 2px !important;
-    font-size: 7px !important;
-    line-height: 1;
-  }
-
-  .thermal-items-table tbody td {
-    padding: 1px 2px !important;
-    font-size: 7px !important;
-    line-height: 1.1 !important;
-  }
-
-  .thermal-item-row .product-name {
-    max-width: 55px !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    white-space: nowrap !important;
-  }
-
-  .thermal-header {
-    margin-bottom: 2mm !important;
-    padding-bottom: 1mm !important;
-  }
-
-  .thermal-summary-table {
-    font-size: 8px !important;
-  }
-
-  .thermal-summary-row td {
-    padding: 0.5mm 1mm !important;
-  }
-
-  .thermal-footer {
-    font-size: 7px !important;
-    margin-top: 1mm !important;
-  }
-
-  .thermal-amount-in-words {
-    font-size: 7px !important;
-    padding: 0.5mm !important;
-    margin: 0.5mm 0 !important;
-  }
-
-  .thermal-terms-conditions {
-    font-size: 6px !important;
-    padding: 0 !important;
-    margin: 0.5mm 0 !important;
-  }
-
-  .thermal-terms-conditions p {
-    margin: 0.2mm 0 !important;
-    padding-left: 1mm !important;
-  }
-
-  .thermal-footer-text {
-    font-size: 8px !important;
-    margin-top: 0.5mm !important;
-  }
-
-  .thermal-return-item {
-    background-color: transparent;
-  }
-
-  .thermal-return-item .return-badge {
-    display: inline;
-  }
-
-  .thermal-col-amount.return-amount {
-    color: #000;
-  }
-}
-
-
-/* ════════════════════════════════════════════════════════════
-   PAGE BREAK - For multi-page invoices
-   ════════════════════════════════════════════════════════════ */
-.page-break {
-  page-break-before: always;
-  break-before: page;
-  margin-top: 5mm;
-}
-
-/* ════════════════════════════════════════════════════════════
-   THERMAL INVOICE HEADER
-   ════════════════════════════════════════════════════════════ */
-.thermal-header {
-  text-align: center;
-  margin-bottom: 4mm;
-  border-bottom: 1px solid #000;
-  padding-bottom: 2mm;
-}
-
-/* Header two-column wrapper: left = shop details, right = customer details */
-.thermal-header-wrapper {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  width: 100%;
-  gap: 2mm;
-}
-
-.thermal-header-left {
-  width: 48%;
-  max-width: 48%;
-  text-align: left;
-  word-break: break-word;
-}
-
-.thermal-header-right {
-  width: 48%;
-  max-width: 48%;
-  text-align: right;
-  word-break: break-word;
-}
-
-.thermal-shop-name {
+/* ── Screen wrapper ─────────────────────────────────────────────── */
+.invoice-print.a4-invoice {
+  font-family: Arial, Helvetica, sans-serif;
   font-size: 11px;
-  font-weight: bold;
-  margin-bottom: 1mm;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: #000;
+  background: #fff;
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 8mm;
+  box-sizing: border-box;
 }
 
-.thermal-shop-details {
-  font-size: 8px;
-  line-height: 1.2;
-  margin-bottom: 1mm;
-}
-
-.thermal-shop-details div {
-  display: block;
-  margin: 0.5mm 0;
-}
-
-.thermal-tax-invoice {
-  font-size: 12px;
-  font-weight: bold;
-  margin: 1mm 0;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.thermal-invoice-meta {
-  width: 100%;
-  margin-top: 1mm;
-  font-size: 8px;
-}
-
-.thermal-invoice-meta tbody tr {
-  height: auto;
-}
-
-.thermal-invoice-meta td {
-  padding: 1mm 2mm;
-  border: none;
-  text-align: left;
-}
-
-.thermal-invoice-meta .meta-label {
-  font-weight: bold;
-  width: auto;
-  white-space: nowrap;
-}
-
-.thermal-invoice-meta .meta-value {
-  font-weight: normal;
-}
-
-/* ════════════════════════════════════════════════════════════
-   BILL TO / CUSTOMER DETAILS
-   ════════════════════════════════════════════════════════════ */
-.thermal-bill-to {
-  margin: 2mm 0;
-  padding: 1mm;
-  border: 1px dotted #000;
-  font-size: 8px;
-}
-
-.thermal-customer-table {
+/* ── Root table  (provides outer border) ────────────────────────── */
+.inv-root {
   width: 100%;
   border-collapse: collapse;
+  border: 1.5px solid #000;
 }
 
-.thermal-customer-table tbody tr {
-  height: auto;
-}
-
-.thermal-customer-table td.label {
-  font-weight: bold;
-  padding: 0.5mm 1mm;
-  white-space: nowrap;
-  width: auto;
-}
-
-.thermal-customer-table td.value {
-  padding: 0.5mm 1mm;
-  word-break: break-word;
-}
-
-/* ════════════════════════════════════════════════════════════
-   THERMAL ITEMS TABLE - Column Layout
-   S.No | Qty | Product Name | Batch | Exp | HSN | MRP | Rate | Disc% | GST% | Amount
-   ════════════════════════════════════════════════════════════ */
-.thermal-items-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 2mm 0;
-  font-size: 8px;
-}
-
-.thermal-items-table thead {
-  border-top: 1px solid #000;
-  border-bottom: 1px solid #000;
-}
-
-.thermal-items-header th {
-  padding: 1mm;
-  text-align: center;
-  font-weight: bold;
-  white-space: nowrap;
-  font-size: 8px;
-  line-height: 1.2;
-}
-
-/* Column widths optimized for thermal printer (148mm) - Fixed pixel widths for half A4 */
-.thermal-col-sno {
-  width: 14px;
-  min-width: 14px;
-  max-width: 14px;
-  text-align: center;
-}
-
-.thermal-col-qty {
-  width: 14px;
-  min-width: 14px;
-  max-width: 14px;
-  text-align: center;
-}
-
-.thermal-col-product {
-  width: 50px;
-  min-width: 50px;
-  max-width: 50px;
-  text-align: left;
-}
-
-.thermal-col-batch {
-  width: 24px;
-  min-width: 24px;
-  max-width: 24px;
-  text-align: center;
-}
-
-.thermal-col-exp {
-  width: 24px;
-  min-width: 24px;
-  max-width: 24px;
-  text-align: center;
-  white-space: nowrap;
-}
-
-.thermal-col-hsn {
-  width: 24px;
-  min-width: 24px;
-  max-width: 24px;
-  text-align: center;
-}
-
-.thermal-col-mrp {
-  width: 30px;
-  min-width: 30px;
-  max-width: 30px;
-  text-align: right;
-}
-
-.thermal-col-rate {
-  width: 28px;
-  min-width: 28px;
-  max-width: 28px;
-  text-align: right;
-}
-
-.thermal-col-disc {
-  width: 18px;
-  min-width: 18px;
-  max-width: 18px;
-  text-align: center;
-}
-
-.thermal-col-gst {
-  width: 18px;
-  min-width: 18px;
-  max-width: 18px;
-  text-align: center;
-}
-
-.thermal-col-amount {
-  width: 36px;
-  min-width: 36px;
-  max-width: 36px;
-  text-align: right;
-}
-
-/* Items table body rows */
-.thermal-items-table tbody tr {
-  border-bottom: 0.5px solid #ddd;
-  height: auto;
-}
-
-.thermal-items-table tbody tr:last-child {
-  border-bottom: 1px solid #000;
-}
-
-.thermal-item-row td {
-  padding: 0.7mm 1mm;
+/* Every cell gets a border */
+.inv-root td,
+.inv-root th {
+  border: 1px solid #000;
+  padding: 4px 6px;
   vertical-align: top;
-  word-wrap: break-word;
 }
 
-.thermal-item-row .product-name {
-  max-width: 100%;
-  word-wrap: break-word;
-  white-space: normal;
-  line-height: 1.2;
-}
+/* ── Column width proportions ───────────────────────────────────── */
+.inv-stub          { width: 14%; }
+.inv-header-center { width: 56%; }
+.inv-header-qr     { width: 30%; }
 
-/* Right-align numbers */
-.thermal-item-row .thermal-col-mrp,
-.thermal-item-row .thermal-col-rate,
-.thermal-item-row .thermal-col-amount {
-  text-align: right;
-  font-family: 'Courier New', monospace;
-}
-
-.thermal-item-row .thermal-col-qty,
-.thermal-item-row .thermal-col-sno,
-.thermal-item-row .thermal-col-disc,
-.thermal-item-row .thermal-col-gst {
+/* ── HEADER CENTRE ──────────────────────────────────────────────── */
+.inv-header-center {
   text-align: center;
+  padding: 6px 8px;
 }
 
-/* ════════════════════════════════════════════════════════════
-   THERMAL FOOTER - Summary and Totals
-   ════════════════════════════════════════════════════════════ */
-.thermal-footer {
-  margin-top: 2mm;
-  border-top: 1px solid #000;
-  padding-top: 2mm;
+.inv-title-tax {
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+  letter-spacing: 0.5px;
+  margin-bottom: 3px;
+  text-transform: uppercase;
+}
+
+.inv-company-name {
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  margin: 4px 0;
+  text-transform: uppercase;
+}
+
+.inv-company-sub {
+  font-size: 10px;
+  font-weight: 600;
+  margin-top: 1px;
+}
+
+.inv-company-addr {
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+/* ── HEADER RIGHT (QR) ──────────────────────────────────────────── */
+.inv-header-qr {
+  text-align: center;
+  vertical-align: middle;
+  padding: 6px;
+}
+
+.inv-qr-label {
   font-size: 9px;
+  font-weight: 700;
+  margin-bottom: 4px;
 }
 
-.thermal-summary-table {
+.inv-qr-box {
+  width: 80px;
+  height: 80px;
+  border: 1px solid #000;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  color: #555;
+  background: #f9f9f9;
+  gap: 4px;
+}
+
+.inv-qr-upi {
+  font-size: 8px;
+  word-break: break-all;
+  text-align: center;
+  padding: 0 4px;
+}
+
+.inv-qr-empty {
+  font-size: 9px;
+  color: #aaa;
+}
+
+/* ── STUB (left label column) ───────────────────────────────────── */
+.inv-stub {
+  border: 1px solid #000;
+}
+
+/* ── INVOICE DATE ROW ───────────────────────────────────────────── */
+.inv-date-cell {
+  text-align: left;
+  padding: 4px 8px;
+}
+
+.inv-date-label {
+  font-weight: 700;
+  margin-right: 6px;
+}
+
+/* .inv-date-value {
+  font-weight: 600;
+} */
+
+/* ── META ROWS (Invoice No / Place of Supply / EWay) ────────────── */
+.inv-meta-label {
+  font-weight: 700;
+  white-space: nowrap;
+  padding: 4px 6px;
+}
+
+.inv-meta-value {
+  padding: 4px 6px;
+}
+
+/* ── BILL TO / SHIP TO SECTION HEADER ───────────────────────────── */
+.inv-section-header {
+  text-align: center;
+  font-weight: 900;
+  font-size: 12px;
+  text-decoration: underline;
+  padding: 5px 6px;
+  background: #fff;
+}
+
+/* ── BILL TO / SHIP TO FIELD ROWS ───────────────────────────────── */
+.inv-field-label {
+  font-weight: 700;
+  white-space: nowrap;
+  padding: 4px 6px;
+}
+
+.inv-field-value {
+  padding: 4px 6px;
+}
+
+.inv-address {
+  line-height: 1.5;
+}
+
+/* ── ITEMS WRAPPER CELL ─────────────────────────────────────────── */
+.inv-items-wrapper {
+  padding: 0 !important;
+  border: none !important;
+}
+
+/* ── ITEMS TABLE ────────────────────────────────────────────────── */
+.inv-items {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 1mm;
 }
 
-.thermal-summary-table tbody tr {
-  height: auto;
+.inv-items th,
+.inv-items td {
+  border: 1px solid #000;
+  padding: 4px 5px;
+  vertical-align: middle;
 }
 
-.thermal-summary-row td {
-  padding: 0.5mm 2mm;
-  border: none;
+/* Header row */
+.inv-items-head th {
+  background: #e8e8e8;
+  font-weight: 700;
+  font-size: 10.5px;
+  text-align: center;
+  white-space: nowrap;
 }
 
-.thermal-summary-label {
-  font-weight: bold;
-  text-align: left;
-  width: 60%;
+/* ── Items column widths ────────────────────────────────────────── */
+.ic-sno  { width: 4%;  text-align: center; }
+.ic-desc { width: 28%; text-align: left;   }
+.ic-hsn  { width: 9%;  text-align: center; }
+.ic-qty  { width: 5%;  text-align: center; }
+.ic-unit { width: 6%;  text-align: center; }
+.ic-mrp  { width: 8%;  text-align: right;  }
+.ic-rate { width: 8%;  text-align: right;  }
+.ic-disc { width: 6%;  text-align: center; }
+.ic-gst  { width: 6%;  text-align: center; }
+.ic-amt  { width: 10%; text-align: right; font-weight: 700; }
+
+/* Item body rows */
+.inv-items tbody tr td {
+  font-size: 10.5px;
 }
 
-.thermal-summary-value {
-  text-align: right;
-  font-family: 'Courier New', monospace;
-  font-size: 9px;
+/* Return rows */
+.inv-return-row td {
+  color: #b91c1c;
 }
 
-.thermal-summary-value.discount-value {
-  color: #d32f2f;
-}
-
-.thermal-summary-total {
-  border-top: 1px solid #000;
-  border-bottom: 1px solid #000;
-  font-weight: bold;
-}
-
-.thermal-summary-label-total {
-  font-weight: bold;
-  text-align: left;
-  padding: 1mm 2mm;
-  font-size: 10px;
-}
-
-.thermal-summary-value-total {
-  text-align: right;
-  font-weight: bold;
-  padding: 1mm 2mm;
-  font-size: 10px;
-  font-family: 'Courier New', monospace;
-}
-
-/* Amount in Words */
-.thermal-amount-in-words {
-  margin: 1mm 0;
-  padding: 1mm;
-  border: 1px dotted #000;
+.inv-return-badge {
   font-size: 8px;
-  line-height: 1.3;
-  word-wrap: break-word;
+  background: #fee2e2;
+  color: #b91c1c;
+  padding: 1px 3px;
+  border-radius: 2px;
+  margin-left: 4px;
 }
 
-.thermal-amount-in-words strong {
-  font-weight: bold;
-  display: inline;
+/* Footer totals row */
+.inv-items-foot td {
+  background: #f5f5f5;
+  font-weight: 700;
+  font-size: 10.5px;
 }
 
-/* Terms & Conditions */
-.thermal-terms-conditions {
-  margin: 1mm 0;
-  padding: 1mm;
-  font-size: 7px;
-  line-height: 1.2;
+.inv-foot-label {
+  text-align: center !important;
 }
 
-.thermal-terms-conditions strong {
-  font-weight: bold;
+.inv-foot-qty {
+  text-align: center !important;
+  font-weight: 700;
+}
+
+.inv-foot-subtotal-label {
+  text-align: right !important;
+  white-space: nowrap;
+}
+
+.inv-foot-subtotal-val {
+  text-align: right !important;
+  font-weight: 700;
+}
+
+/* ── FINANCIAL SUMMARY ROWS ─────────────────────────────────────── */
+.inv-sum-label {
+  font-weight: 600;
+  padding: 3px 6px;
+  white-space: nowrap;
+}
+
+.inv-sum-value {
+  padding: 3px 6px;
+}
+
+.inv-sum-discount {
+  color: #dc2626;
+}
+
+/* Grand total row */
+.inv-grand-total-row td {
+  background: #f5f5f5;
+}
+
+.inv-grand-label {
+  font-weight: 900;
+  font-size: 12px;
+  padding: 5px 6px;
+}
+
+.inv-grand-value {
+  font-weight: 900;
+  font-size: 12px;
+  padding: 5px 6px;
+}
+
+/* ── AMOUNT IN WORDS ────────────────────────────────────────────── */
+.inv-words-cell {
+  padding: 5px 6px;
+  font-size: 11px;
+}
+
+.inv-words-text {
+  font-style: normal;
+}
+
+/* ── TERMS & CONDITIONS ─────────────────────────────────────────── */
+.inv-terms-cell {
+  padding: 5px 6px;
+  font-size: 10.5px;
+}
+
+.inv-terms-list p {
+  margin: 2px 0;
+  color: #1a56db;
+}
+
+/* ── BANK DETAILS & PAYMENT QR ──────────────────────────────────── */
+.inv-bank-qr-wrapper {
+  padding: 5px 6px;
+  font-size: 10px;
+}
+
+.inv-bank-qr-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.inv-bank-qr-table td {
+  border: none;
+  vertical-align: top;
+}
+
+.inv-bank-section {
+  margin-bottom: 8px;
+}
+
+.inv-bank-section > strong {
   display: block;
-  margin-bottom: 0.5mm;
+  margin-bottom: 3px;
+  font-weight: 600;
+  font-size: 10px;
 }
 
-.thermal-terms-conditions p {
-  margin: 0.3mm 0;
-  padding-left: 2mm;
-}
-
-/* Footer Text */
-.thermal-footer-text {
-  text-align: center;
-  margin-top: 1mm;
-  font-weight: bold;
+.inv-bank-details {
   font-size: 9px;
-  letter-spacing: 0.5px;
+  line-height: 1.4;
+  margin-left: 4px;
 }
 
-/* ════════════════════════════════════════════════════════════
-   UTILITY CLASSES
-   ════════════════════════════════════════════════════════════ */
-.text-center {
+.inv-bank-details div {
+  margin: 1px 0;
+}
+
+.inv-bank-label {
+  font-weight: 600;
+  min-width: 60px;
+  display: inline-block;
+}
+
+.inv-terms-section {
+  margin-top: 8px;
+}
+
+.inv-terms-section > strong {
+  display: block;
+  margin-bottom: 3px;
+  font-weight: 600;
+  font-size: 10px;
+}
+
+.inv-terms-section .inv-terms-list {
+  font-size: 9px;
+}
+
+.inv-qr-payment-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 8px;
+  border: 1px dashed #999;
+  border-radius: 4px;
+  background: #fafafa;
+  min-height: 120px;
+}
+
+.inv-qr-label-payment {
+  font-weight: 600;
+  font-size: 10px;
+  margin-bottom: 6px;
+  color: #333;
+}
+
+.inv-qr-image-print {
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+  border: 1px solid #ddd;
+  padding: 2px;
+  background: white;
+}
+
+.inv-qr-placeholder-print {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #999;
+  font-size: 10px;
   text-align: center;
 }
 
-.text-right {
-  text-align: right;
+/* ── THANK YOU ──────────────────────────────────────────────────── */
+.inv-thankyou-cell {
+  padding: 5px 6px;
+  font-size: 11px;
+  color: #1a56db;
+  font-weight: 600;
 }
-
-.text-left {
+/* ── Invoice No row: date on the right side ─────────────────────── */
+.inv-date-right {
   text-align: left;
+  white-space: nowrap;
 }
 
-.bold {
-  font-weight: bold;
+/* ── Inline label inside a value cell (E-Way Bill in same row) ───── */
+.inv-inline-label {
+  font-weight: 700;
+  white-space: nowrap;
 }
 
-/* ════════════════════════════════════════════════════════════
-   Print optimization for thermal printers - Half A4 (148mm × 210mm)
-   ════════════════════════════════════════════════════════════ */
+/* Separator between Proprietor and GSTIN in header */
+.inv-header-separator {
+  margin: 0 4px;
+  color: #444;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PRINT MEDIA  –  hides everything except the invoice
+   ═══════════════════════════════════════════════════════════════════ */
 @media print {
+  /* Hide everything on page */
+  body > *:not(.invoice-print-portal) {
+    display: none !important;
+  }
+
+  /* Show invoice */
+  .invoice-print.a4-invoice {
+    display: block !important;
+    width: 100% !important;
+    padding: 5mm !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    font-size: 10px !important;
+  }
+
+  .inv-root {
+    border: 1.5px solid #000 !important;
+  }
+
+  .inv-root td,
+  .inv-root th,
+  .inv-items td,
+  .inv-items th {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .inv-items-head th {
+    background: #e8e8e8 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .inv-items-foot td,
+  .inv-grand-total-row td {
+    background: #f5f5f5 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
   @page {
-    size: 148mm 210mm;
-    margin: 3mm;
-  }
-
-  .thermal-invoice {
-    width: 142mm !important;
-    height: auto !important;
-    padding: 3mm !important;
+    size: A4 portrait;
+    margin: 10mm;
   }
 }
-
-/* ════════════════════════════════════════════════════════════
-   GENERAL STYLING
-   ════════════════════════════════════════════════════════════ */
-.invoice-print {
-  box-sizing: border-box;
-}
-
-.invoice-print * {
-  box-sizing: border-box;
-}
-
-.invoice-print table {
-  margin: 0;
-  padding: 0;
-}
-
-.invoice-print > div {
-  margin: 0;
-  padding: 0;
-}
-
-.invoice-print > p {
-  margin: 0;
-  padding: 0;
-}
-
-/* Return item styling */
-.thermal-return-item {
-  background-color: #fff3cd;
-}
-
-.thermal-return-item .return-badge {
-  font-weight: bold;
-  color: #d9534f;
-  font-size: 0.8em;
-}
-
-.thermal-return-item .return-reason {
-  display: block;
-  margin-top: 2px;
-  font-size: 0.75em;
-}
-
-.thermal-col-amount.return-amount {
-  color: #d9534f;
-  font-weight: bold;
-}
-
-@media print {
-  .thermal-return-item {
-    background-color: transparent;
-  }
-  
-  .thermal-return-item .return-badge {
-    display: inline;
-  }
-  
-  .thermal-col-amount.return-amount {
-    color: #000;
-  }
-}
-

@@ -1,55 +1,35 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { productService } from '../services/medicineService';
 
-// Default product types (hardcoded, always available)
-const DEFAULT_PRODUCT_TYPES = [
-  { id: 'tablet', label: 'Tablet', is_default: true },
-  { id: 'syrup', label: 'Syrup', is_default: true },
-  { id: 'powder', label: 'Powder', is_default: true },
-  { id: 'cream', label: 'Cream', is_default: true },
-  { id: 'diaper', label: 'Diaper', is_default: true },
-  { id: 'condom', label: 'Condom', is_default: true },
-  { id: 'sachet', label: 'Sachet', is_default: true },
-];
+// ✅ REMOVED: DEFAULT_PRODUCT_TYPES constant — product types fully removed
 
 /**
- * ProductContext - Manages state for generic medical store products
- * 
- * Supports all product types: tablets, syrups, powders, creams, diapers, condoms, sachets, etc.
- * Each product includes a product_type field indicating its category.
- * 
- * Also manages custom product types that can be added by the owner.
- * 
- * Backend is responsible for:
- * - Product type validation
- * - Stock management
- * - Data persistence
- * - Custom product type storage
- * 
- * Frontend only:
- * - Displays product type
- * - Calls IPC to fetch/create/update/delete products and product types
- * - No type-specific logic in frontend
+ * ProductContext - Manages state for Ojashwai Electricals inventory
+ *
+ * Handles: products, batches, HSN codes
+ * Backend is responsible for: stock management, data persistence
+ * Frontend: calls IPC to fetch/create/update/delete products and HSN codes
  */
 const ProductContext = createContext();
 
 export const ProductProvider = ({ children }) => {
-  const [products, setProducts] = useState([]);
-  const [productTypes, setProductTypes] = useState([]);
-  const [hsns, setHSNs] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [products, setProducts]   = useState([]);
+  // ✅ REMOVED: productTypes state
+  const [hsns, setHSNs]           = useState([]);
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState(null);
 
-  // Fetch all products (supports filtering by product_type, search, etc.)
+  // Fetch all products
   const fetchProducts = useCallback(async (params = {}) => {
     setLoading(true);
     setError(null);
     try {
-      // Use IPC to fetch products from SQLite
       if (window?.api?.getProducts) {
         const response = await window.api.getProducts();
-        const productList = Array.isArray(response.data) ? response.data : response.data.results || [];
-        console.log('📥 ProductContext.fetchProducts: Fetched', productList.length, 'products with batches:', productList);
+        const productList = Array.isArray(response.data)
+          ? response.data
+          : response.data.results || [];
+        console.log('📥 ProductContext.fetchProducts: Fetched', productList.length, 'products:', productList);
         setProducts(productList);
       } else {
         throw new Error('window.api.getProducts is not available');
@@ -62,40 +42,42 @@ export const ProductProvider = ({ children }) => {
     }
   }, []);
 
-  // Add product (requires product_type field)
+  // Add product
   const addProduct = useCallback(async (productData) => {
     try {
       setError(null);
       if (window?.api?.addProduct) {
         const response = await window.api.addProduct(productData);
-        
+
         if (!response || !response.data) {
           throw new Error('Invalid response: missing product data');
         }
-        
+
         const newProduct = response.data;
-        
-        // Validate product has required fields
+
         if (!newProduct || !newProduct.id || !newProduct.name) {
           console.error('INVALID PRODUCT:', newProduct);
           throw new Error('Incomplete product data returned from server');
         }
-        
-        // Ensure batches and gst_rate exist
+
         if (!Array.isArray(newProduct.batches)) {
           newProduct.batches = [];
         }
         if (newProduct.gst_rate === undefined) {
           newProduct.gst_rate = null;
         }
-        
-        console.log('Adding product to state:', { id: newProduct.id, name: newProduct.name, batches: newProduct.batches.length });
-        
+
+        console.log('Adding product to state:', {
+          id: newProduct.id,
+          name: newProduct.name,
+          batches: newProduct.batches.length,
+        });
+
         setProducts(prevProducts => {
           const filtered = prevProducts.filter(p => p && p.id && p.name);
           return [...filtered, newProduct];
         });
-        
+
         return newProduct;
       } else {
         throw new Error('window.api.addProduct is not available');
@@ -111,7 +93,7 @@ export const ProductProvider = ({ children }) => {
   const updateProduct = useCallback(async (id, payload) => {
     try {
       setError(null);
-      
+
       if (!window?.api?.updateProduct) {
         throw new Error('window.api.updateProduct not available');
       }
@@ -122,12 +104,9 @@ export const ProductProvider = ({ children }) => {
       }
 
       const updatedProduct = response.data;
-      setProducts(prev =>
-        prev.map(p => (p.id === id ? updatedProduct : p))
-      );
-    
+      setProducts(prev => prev.map(p => (p.id === id ? updatedProduct : p)));
+
       console.log('✅ ProductContext.updateProduct: updated', updatedProduct);
-    
       return updatedProduct;
     } catch (err) {
       const message = err.message || 'Failed to update product';
@@ -141,7 +120,7 @@ export const ProductProvider = ({ children }) => {
   const deleteProduct = useCallback(async (id) => {
     try {
       setError(null);
-      
+
       if (!window?.api?.deleteProduct) {
         throw new Error('window.api.deleteProduct not available');
       }
@@ -171,72 +150,9 @@ export const ProductProvider = ({ children }) => {
     }
   }, []);
 
-  // Fetch all available product types (defaults + custom from SQLite)
-  const fetchProductTypes = useCallback(async () => {
-    try {
-      if (!window?.api?.getProductTypes) {
-        throw new Error('window.api.getProductTypes not available');
-      }
-
-      const response = await window.api.getProductTypes();
-      if (response && response.success === false) {
-        throw new Error(response.message || 'Failed to fetch product types');
-      }
-
-      const customTypes = response.data || [];
-      // Merge defaults with custom types
-      const allTypes = [...DEFAULT_PRODUCT_TYPES, ...customTypes];
-      setProductTypes(allTypes);
-      return allTypes;
-    } catch (err) {
-      console.error('[ProductContext] Failed to fetch product types:', err);
-      setError(err.message);
-      // Return defaults on error
-      return DEFAULT_PRODUCT_TYPES;
-    }
-  }, []);
-
-  // Add a new custom product type
-  const addProductType = useCallback(async (typeData) => {
-    try {
-      if (!window?.api?.addProductType) {
-        throw new Error('window.api.addProductType not available');
-      }
-
-      const response = await window.api.addProductType(typeData);
-      if (response && response.success === false) {
-        throw new Error(response.message || 'Failed to add product type');
-      }
-
-      const newType = response.data;
-      setProductTypes(prevTypes => [...prevTypes, newType]);
-      return newType;
-    } catch (err) {
-      const message = err.message || 'Failed to add product type';
-      setError(message);
-      throw err;
-    }
-  }, []);
-
-  // Delete a custom product type
-  const deleteProductType = useCallback(async (typeId) => {
-    try {
-      if (!window?.api?.deleteProductType) {
-        throw new Error('window.api.deleteProductType not available');
-      }
-
-      const response = await window.api.deleteProductType(typeId);
-      if (response && response.success === false) {
-        throw new Error(response.message || 'Failed to delete product type');
-      }
-
-      setProductTypes(prevTypes => prevTypes.filter(t => t.id !== typeId));
-    } catch (err) {
-      const message = err.message || 'Failed to delete product type';
-      setError(message);
-      throw err;
-    }
-  }, []);
+  // ✅ REMOVED: fetchProductTypes function
+  // ✅ REMOVED: addProductType function
+  // ✅ REMOVED: deleteProductType function
 
   // Fetch all HSN codes
   const fetchHSNs = useCallback(async () => {
@@ -295,7 +211,7 @@ export const ProductProvider = ({ children }) => {
       }
 
       const updatedHSN = response.data;
-      setHSNs(prevHSNs => 
+      setHSNs(prevHSNs =>
         prevHSNs.map(h => h.hsn_code === hsnCode ? updatedHSN : h)
       );
       return updatedHSN;
@@ -328,7 +244,7 @@ export const ProductProvider = ({ children }) => {
 
   const value = {
     products,
-    productTypes,
+    // ✅ REMOVED: productTypes
     hsns,
     loading,
     error,
@@ -337,9 +253,9 @@ export const ProductProvider = ({ children }) => {
     updateProduct,
     deleteProduct,
     getLowStock,
-    fetchProductTypes,
-    addProductType,
-    deleteProductType,
+    // ✅ REMOVED: fetchProductTypes
+    // ✅ REMOVED: addProductType
+    // ✅ REMOVED: deleteProductType
     fetchHSNs,
     addHSN,
     updateHSN,
@@ -356,7 +272,7 @@ export const ProductProvider = ({ children }) => {
 export const useProducts = () => {
   const context = useContext(ProductContext);
   if (!context) {
-    throw new Error('useProducts must be used within ProductProvider (generic products, all types)');
+    throw new Error('useProducts must be used within ProductProvider');
   }
   return context;
 };

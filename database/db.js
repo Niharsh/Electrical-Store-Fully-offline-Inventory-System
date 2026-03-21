@@ -78,17 +78,15 @@ async function initializeDatabase() {
   console.log('[database] Foreign key constraints enabled');
 
   // Create tables sequentially
-  await run(`
+  run(`
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       product_type TEXT NOT NULL,
       hsn TEXT,
-      generic_name TEXT,
       manufacturer TEXT,
-      salt_composition TEXT,
       min_stock_level INTEGER DEFAULT 10,
-      unit TEXT DEFAULT 'pc',
+      unit TEXT DEFAULT 'PCS',
       description TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -96,13 +94,13 @@ async function initializeDatabase() {
   `);
 
   // Check if batches table exists with old schema
-  const batchesCheck = await get(
+  const batchesCheck = get(
     "SELECT sql FROM sqlite_master WHERE type='table' AND name='batches'"
   );
 
   if (!batchesCheck) {
     // Create batches table with composite UNIQUE constraint (product_id, batch_number)
-    await run(`
+    run(`
       CREATE TABLE batches (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         product_id INTEGER NOT NULL,
@@ -123,8 +121,8 @@ async function initializeDatabase() {
     console.log('[database] Migrating batches table to fix UNIQUE constraint...');
     // Migrate old schema - drop & recreate
     try {
-      await run('DROP TABLE IF EXISTS batches');
-      await run(`
+      run('DROP TABLE IF EXISTS batches');
+      run(`
         CREATE TABLE batches (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           product_id INTEGER NOT NULL,
@@ -146,7 +144,7 @@ async function initializeDatabase() {
     }
   }
 
-  await run(`
+  run(`
     CREATE TABLE IF NOT EXISTS wholesalers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
@@ -157,7 +155,7 @@ async function initializeDatabase() {
     );
   `);
 
-  await run(`
+  run(`
     CREATE TABLE IF NOT EXISTS shop_settings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       shop_name TEXT,
@@ -165,13 +163,34 @@ async function initializeDatabase() {
       phone TEXT,
       address TEXT,
       gst_number TEXT,
-      dl_number TEXT,
+      bank_holder TEXT,
+      bank_name TEXT,
+      bank_account TEXT,
+      bank_ifsc TEXT,
+      bank_qr_path TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
-  await run(`
+  // Add missing columns if they don't exist (for existing databases)
+  try {
+    run(`ALTER TABLE shop_settings ADD COLUMN bank_holder TEXT;`);
+  } catch (e) { /* column may already exist */ }
+  try {
+    run(`ALTER TABLE shop_settings ADD COLUMN bank_name TEXT;`);
+  } catch (e) { /* column may already exist */ }
+  try {
+    run(`ALTER TABLE shop_settings ADD COLUMN bank_account TEXT;`);
+  } catch (e) { /* column may already exist */ }
+  try {
+    run(`ALTER TABLE shop_settings ADD COLUMN bank_ifsc TEXT;`);
+  } catch (e) { /* column may already exist */ }
+  try {
+    run(`ALTER TABLE shop_settings ADD COLUMN bank_qr_path TEXT;`);
+  } catch (e) { /* column may already exist */ }
+
+  run(`
     CREATE TABLE IF NOT EXISTS product_types (
       id TEXT PRIMARY KEY,
       label TEXT NOT NULL,
@@ -181,7 +200,7 @@ async function initializeDatabase() {
     );
   `);
 
-  await run(`
+  run(`
     CREATE TABLE IF NOT EXISTS hsn_codes (
       hsn_code TEXT PRIMARY KEY,
       description TEXT,
@@ -194,34 +213,168 @@ async function initializeDatabase() {
 
   // Add product_name column to invoice_items if it doesn't exist
   try {
-    await run('ALTER TABLE invoice_items ADD COLUMN product_name TEXT');
+    run('ALTER TABLE invoice_items ADD COLUMN product_name TEXT');
   } catch (err) {
     // Column likely already exists, ignore error
   }
 
   // Add expiry_date column to invoice_items if it doesn't exist
   try {
-    await run('ALTER TABLE invoice_items ADD COLUMN expiry_date TEXT');
+    run('ALTER TABLE invoice_items ADD COLUMN expiry_date TEXT');
   } catch (err) {
     // Column likely already exists, ignore error
   }
 
-  await run(`
+  // Add new billing fields to invoices table for electrical shop (CHANGE 2-5)
+  try {
+    run('ALTER TABLE invoices ADD COLUMN bill_to_gstin VARCHAR(20)');
+  } catch (err) {
+    // Column likely already exists, ignore error
+  }
+  
+  try {
+    run('ALTER TABLE invoices ADD COLUMN bill_to_state VARCHAR(100)');
+  } catch (err) {
+    // Column likely already exists, ignore error
+  }
+  
+  try {
+    run('ALTER TABLE invoices ADD COLUMN ship_same_as_bill BOOLEAN DEFAULT 1');
+  } catch (err) {
+    // Column likely already exists, ignore error
+  }
+  
+  try {
+    run('ALTER TABLE invoices ADD COLUMN ship_to_name VARCHAR(255)');
+  } catch (err) {
+    // Column likely already exists, ignore error
+  }
+  
+  try {
+    run('ALTER TABLE invoices ADD COLUMN ship_to_address TEXT');
+  } catch (err) {
+    // Column likely already exists, ignore error
+  }
+  
+  try {
+    run('ALTER TABLE invoices ADD COLUMN ship_to_gstin VARCHAR(20)');
+  } catch (err) {
+    // Column likely already exists, ignore error
+  }
+  
+  try {
+    run('ALTER TABLE invoices ADD COLUMN ship_to_state VARCHAR(100)');
+  } catch (err) {
+    // Column likely already exists, ignore error
+  }
+  
+  try {
+    run('ALTER TABLE invoices ADD COLUMN place_of_supply VARCHAR(100)');
+  } catch (err) {
+    // Column likely already exists, ignore error
+  }
+  
+  try {
+    run('ALTER TABLE invoices ADD COLUMN eway_bill_no VARCHAR(50)');
+  } catch (err) {
+    // Column likely already exists, ignore error
+  }
+
+  // Remove old customer_dl_number column if it exists (CHANGE 1)
+  // Note: SQLite doesn't support DROP COLUMN directly for older versions,
+  // so we leave it but it won't be used in new code
+
+  run(`
+    CREATE TABLE IF NOT EXISTS customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_name TEXT NOT NULL,
+      phone_number TEXT,
+      bill_to_address TEXT,
+      bill_to_gstin VARCHAR(20),
+      bill_to_state VARCHAR(100),
+      ship_to_name VARCHAR(255),
+      ship_to_address TEXT,
+      ship_to_gstin VARCHAR(20),
+      ship_to_state VARCHAR(100),
+      discount REAL DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(customer_name, phone_number)
+    );
+  `);
+
+  run(`
     CREATE TABLE IF NOT EXISTS invoices (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       customer_name TEXT NOT NULL,
       customer_phone TEXT,
-      customer_dl_number TEXT,
       customer_address TEXT,
+      bill_to_name TEXT,
+      bill_to_phone TEXT,
+      bill_to_gstin VARCHAR(20),
+      bill_to_state VARCHAR(100),
+      ship_same_as_bill BOOLEAN DEFAULT 1,
+      ship_to_name VARCHAR(255),
+      ship_to_phone TEXT,
+      ship_to_address TEXT,
+      ship_to_gstin VARCHAR(20),
+      ship_to_state VARCHAR(100),
+      place_of_supply VARCHAR(100),
+      eway_bill_no VARCHAR(50),
+      invoice_number TEXT,
       notes TEXT,
       discount_percent REAL DEFAULT 0,
+      tax_type TEXT DEFAULT 'gst',
       total_amount REAL NOT NULL,
+      customer_id INTEGER,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (customer_id) REFERENCES customers(id)
     );
-  `);
+` );
 
-  await run(`
+    // Add customer_id column to invoices if it doesn't exist (for existing databases)
+    try {
+    run('ALTER TABLE invoices ADD COLUMN customer_id INTEGER REFERENCES customers(id)');
+  } catch (err) {
+    // Column likely already exists, ignore error
+  }
+
+  // Add invoice_number column to invoices if it doesn't exist (for existing databases)
+  try {
+    run('ALTER TABLE invoices ADD COLUMN invoice_number TEXT');
+  } catch (err) {
+    // Column likely already exists, ignore error
+  }
+    // Add tax_type column to invoices (for IGST vs CGST+SGST selection)
+  try {
+    run("ALTER TABLE invoices ADD COLUMN tax_type TEXT DEFAULT 'gst'");
+    console.log('[database] Added tax_type column to invoices');
+  } catch (err) {
+    // Column already exists — ignore
+  }
+
+  // Add bill_to_name column to invoices
+  try {
+    run('ALTER TABLE invoices ADD COLUMN bill_to_name TEXT');
+  } catch (err) {
+    // Column already exists — ignore
+  }
+
+  // Add bill_to_phone column to invoices
+  try {
+    run('ALTER TABLE invoices ADD COLUMN bill_to_phone TEXT');
+  } catch (err) {
+    // Column already exists — ignore
+  }
+
+  // Add ship_to_phone column to invoices
+  try {
+    run('ALTER TABLE invoices ADD COLUMN ship_to_phone TEXT');
+  } catch (err) {
+    // Column already exists — ignore
+  }
+  run(`
     CREATE TABLE IF NOT EXISTS invoice_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       invoice_id INTEGER NOT NULL,
@@ -244,7 +397,7 @@ async function initializeDatabase() {
     );
   `);
 
-  await run(`
+  run(`
     CREATE TABLE IF NOT EXISTS purchase_bills (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       bill_number TEXT,
@@ -262,13 +415,12 @@ async function initializeDatabase() {
   `);
 
   // Owner account management (single-owner offline app)
-  await run(`
+  run(`
     CREATE TABLE IF NOT EXISTS owners (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL UNIQUE,
       email TEXT,
       password_hash TEXT NOT NULL,
-      recovery_code_hash TEXT,
       first_name TEXT,
       last_name TEXT,
       is_active INTEGER DEFAULT 1,
@@ -292,24 +444,22 @@ async function addProduct(productData) {
 
   try {
     // Start transaction
-    await exec('BEGIN TRANSACTION');
+    exec('BEGIN TRANSACTION');
     
     const insertSql = `
       INSERT INTO products (
-        name, product_type, hsn, generic_name, manufacturer, 
-        salt_composition, min_stock_level, unit, description
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        name, product_type, hsn, manufacturer, 
+        min_stock_level, unit, description
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
-    const res = await run(insertSql, [
+    const res = run(insertSql, [
       productData.name,
       productData.product_type,
       productData.hsn || null,
-      productData.generic_name || null,
       productData.manufacturer || null,
-      productData.salt_composition || null,
       productData.min_stock_level ?? 10,
-      productData.unit || 'pc',
+      productData.unit || 'PCS',
       productData.description || null,
     ]);
 
@@ -320,7 +470,7 @@ async function addProduct(productData) {
     if (productData.batches && Array.isArray(productData.batches)) {
       for (const batch of productData.batches) {
         try {
-          const batchRes = await run(`
+          const batchRes = run(`
             INSERT INTO batches (
               product_id, batch_number, mrp, selling_rate, cost_price, 
               quantity, expiry_date, wholesaler_id
@@ -345,7 +495,7 @@ async function addProduct(productData) {
     }
 
     // Fetch the complete product from database
-    const product = await get('SELECT * FROM products WHERE id = ?', [productId]);
+    const product = get('SELECT * FROM products WHERE id = ?', [productId]);
     if (!product) {
       throw new Error(`Failed to fetch product ${productId} after insert`);
     }
@@ -353,14 +503,14 @@ async function addProduct(productData) {
     // Fetch GST rate from HSN
     let gstRate = null;
     if (product.hsn) {
-      const hsnData = await get('SELECT gst_rate FROM hsn_codes WHERE hsn_code = ?', [product.hsn]);
+      const hsnData = get('SELECT gst_rate FROM hsn_codes WHERE hsn_code = ?', [product.hsn]);
       if (hsnData) {
         gstRate = hsnData.gst_rate;
       }
     }
 
     // Commit transaction
-    await exec('COMMIT');
+    exec('COMMIT');
     
     console.log(`[db] addProduct: SUCCESS - Product ${productId} with ${savedBatches.length} batches`);
     return { ...product, batches: savedBatches, gst_rate: gstRate };
@@ -368,7 +518,7 @@ async function addProduct(productData) {
   } catch (err) {
     console.error(`[db] addProduct: ERROR - Rolling back:`, err.message);
     try {
-      await exec('ROLLBACK');
+      exec('ROLLBACK');
     } catch (rollbackErr) {
       console.error(`[db] addProduct: ROLLBACK failed:`, rollbackErr.message);
     }
@@ -378,18 +528,18 @@ async function addProduct(productData) {
 
 async function getProducts() {
   await getDatabase();
-  const products = await all('SELECT * FROM products ORDER BY created_at DESC');
+  const products = all('SELECT * FROM products ORDER BY created_at DESC');
   const getBatchesSql = 'SELECT * FROM batches WHERE product_id = ?';
   const getHSNSql = 'SELECT gst_rate FROM hsn_codes WHERE hsn_code = ?';
 
   const result = [];
   for (const p of products) {
-    const batches = await all(getBatchesSql, [p.id]);
+    const batches = all(getBatchesSql, [p.id]);
     
     // Fetch GST rate from HSN codes if product has HSN
     let gstRate = null;
     if (p.hsn) {
-      const hsnData = await get(getHSNSql, [p.hsn]);
+      const hsnData = get(getHSNSql, [p.hsn]);
       if (hsnData) {
         gstRate = hsnData.gst_rate;
       }
@@ -405,14 +555,14 @@ async function getProducts() {
 
 async function getProductById(id) {
   await getDatabase();
-  const product = await get('SELECT * FROM products WHERE id = ?', [id]);
+  const product = get('SELECT * FROM products WHERE id = ?', [id]);
   if (!product) return null;
-  const batches = await all('SELECT * FROM batches WHERE product_id = ?', [id]);
+  const batches = all('SELECT * FROM batches WHERE product_id = ?', [id]);
   
   // Fetch GST rate from HSN codes if product has HSN
   let gstRate = null;
   if (product.hsn) {
-    const hsnData = await get('SELECT gst_rate FROM hsn_codes WHERE hsn_code = ?', [product.hsn]);
+    const hsnData = get('SELECT gst_rate FROM hsn_codes WHERE hsn_code = ?', [product.hsn]);
     if (hsnData) {
       gstRate = hsnData.gst_rate;
     }
@@ -435,7 +585,7 @@ async function searchProducts(query) {
 
     // Search products by name, generic_name, or salt_composition (case-insensitive)
     // Prioritize prefix matches over partial matches using ORDER BY CASE
-    const products = await all(
+    const products = all(
       `SELECT DISTINCT p.* FROM products p
        WHERE 
          LOWER(p.name) LIKE ? OR 
@@ -468,7 +618,7 @@ async function searchProducts(query) {
     // Fetch batches and calculate aggregated data for each product
     const result = [];
     for (const p of products) {
-      const batches = await all('SELECT * FROM batches WHERE product_id = ? ORDER BY expiry_date ASC', [p.id]);
+      const batches = all('SELECT * FROM batches WHERE product_id = ? ORDER BY expiry_date ASC', [p.id]);
       
       // Calculate aggregated data from batches
       let total_stock = 0;
@@ -495,7 +645,7 @@ async function searchProducts(query) {
       // Fetch GST rate from HSN codes if product has HSN
       let gstRate = null;
       if (p.hsn) {
-        const hsnData = await get('SELECT gst_rate FROM hsn_codes WHERE hsn_code = ?', [p.hsn]);
+        const hsnData = get('SELECT gst_rate FROM hsn_codes WHERE hsn_code = ?', [p.hsn]);
         if (hsnData) {
           gstRate = hsnData.gst_rate;
         }
@@ -522,15 +672,42 @@ async function searchProducts(query) {
 async function deleteProduct(id) {
   await getDatabase();
   try {
-    await exec('BEGIN TRANSACTION');
-    await run('DELETE FROM batches WHERE product_id = ?', [id]);
-    await run('DELETE FROM products WHERE id = ?', [id]);
-    await exec('COMMIT');
+    exec('BEGIN TRANSACTION');
+
+    // Step 1: Delete invoice_items linked directly to this product
+    try {
+      run('DELETE FROM invoice_items WHERE product_id = ?', [id]);
+    } catch (e) {
+      console.warn('[db] deleteProduct: invoice_items table missing or no direct product items', e.message);
+    }
+
+    // Step 2: Delete invoice_items linked to batch numbers associated with this product
+    try {
+      const batches = all('SELECT id, batch_number FROM batches WHERE product_id = ?', [id]);
+      for (const batch of batches) {
+        run('DELETE FROM invoice_items WHERE batch_number = ? AND product_id = ?', [batch.batch_number, id]);
+      }
+    } catch (e) {
+      console.warn('[db] deleteProduct: failed to delete invoice_items by batch references', e.message);
+    }
+
+    // Step 3: Delete batches for this product
+    try {
+      run('DELETE FROM batches WHERE product_id = ?', [id]);
+    } catch (e) {
+      console.warn('[db] deleteProduct: batches table missing or no batches for product', e.message);
+    }
+
+    // Step 4: Delete product
+    const result = run('DELETE FROM products WHERE id = ?', [id]);
+
+    exec('COMMIT');
     console.log(`[db] deleteProduct: SUCCESS - Product ${id} deleted`);
+    return result;
   } catch (err) {
     console.error(`[db] deleteProduct: ERROR - Rolling back:`, err.message);
     try {
-      await exec('ROLLBACK');
+      exec('ROLLBACK');
     } catch (rollbackErr) {
       console.error(`[db] deleteProduct: ROLLBACK failed:`, rollbackErr.message);
     }
@@ -543,22 +720,20 @@ async function updateProduct(id, productData) {
 
   try {
     // Verify product exists before updating
-    const existingProduct = await get('SELECT id FROM products WHERE id = ?', [id]);
+    const existingProduct = get('SELECT id FROM products WHERE id = ?', [id]);
     if (!existingProduct) {
       throw new Error(`Product ${id} not found`);
     }
     
     // Start transaction
-    await exec('BEGIN TRANSACTION');
+    exec('BEGIN TRANSACTION');
     
     // Update product fields
     const fields = [
       'name',
       'product_type',
       'hsn',
-      'generic_name',
       'manufacturer',
-      'salt_composition',
       'min_stock_level',
       'unit',
       'description',
@@ -567,12 +742,12 @@ async function updateProduct(id, productData) {
     const setClause = fields.map(f => `${f} = ?`).join(', ');
     const values = fields.map(f => productData[f] ?? null);
 
-    await run(`UPDATE products SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [...values, id]);
+    run(`UPDATE products SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [...values, id]);
 
     // Handle batch updates with transaction safety
     if (productData.batches && Array.isArray(productData.batches)) {
       // Get existing batches for this product
-      const existingBatches = await all('SELECT * FROM batches WHERE product_id = ?', [id]);
+      const existingBatches = all('SELECT * FROM batches WHERE product_id = ?', [id]);
       const existingBatchNumbers = new Set(existingBatches.map(b => b.batch_number));
       const newBatchNumbers = new Set(productData.batches.map(b => b.batch_number));
 
@@ -582,7 +757,7 @@ async function updateProduct(id, productData) {
         
         if (existing) {
           // Update existing batch
-          await run(`
+          run(`
             UPDATE batches SET 
               mrp = ?, selling_rate = ?, cost_price = ?, 
               quantity = ?, expiry_date = ?, wholesaler_id = ?,
@@ -600,7 +775,7 @@ async function updateProduct(id, productData) {
           ]);
         } else {
           // Insert new batch
-          await run(`
+          run(`
             INSERT INTO batches (
               product_id, batch_number, mrp, selling_rate, cost_price, 
               quantity, expiry_date, wholesaler_id
@@ -621,13 +796,13 @@ async function updateProduct(id, productData) {
       // Delete batches that were removed
       for (const existing of existingBatches) {
         if (!newBatchNumbers.has(existing.batch_number)) {
-          await run('DELETE FROM batches WHERE product_id = ? AND batch_number = ?', [id, existing.batch_number]);
+          run('DELETE FROM batches WHERE product_id = ? AND batch_number = ?', [id, existing.batch_number]);
         }
       }
     }
 
     // Commit transaction
-    await exec('COMMIT');
+    exec('COMMIT');
     
     console.log(`[db] updateProduct: SUCCESS - Product ${id} updated`);
     return getProductById(id);
@@ -635,7 +810,7 @@ async function updateProduct(id, productData) {
   } catch (err) {
     console.error(`[db] updateProduct: ERROR - Rolling back:`, err.message);
     try {
-      await exec('ROLLBACK');
+      exec('ROLLBACK');
     } catch (rollbackErr) {
       console.error(`[db] updateProduct: ROLLBACK failed:`, rollbackErr.message);
     }
@@ -647,7 +822,7 @@ async function updateProduct(id, productData) {
 async function addWholesaler(wholesalerData) {
   await getDatabase();
   try {
-    const res = await run('INSERT INTO wholesalers (name, contactNumber, gstNumber) VALUES (?, ?, ?)', [
+    const res = run('INSERT INTO wholesalers (name, contactNumber, gstNumber) VALUES (?, ?, ?)', [
       wholesalerData.name,
       wholesalerData.contactNumber || null,
       wholesalerData.gstNumber || null,
@@ -671,7 +846,7 @@ async function getWholesalerById(id) {
 
 async function updateWholesaler(id, wholesalerData) {
   await getDatabase();
-  await run('UPDATE wholesalers SET name = ?, contactNumber = ?, gstNumber = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [
+  run('UPDATE wholesalers SET name = ?, contactNumber = ?, gstNumber = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [
     wholesalerData.name,
     wholesalerData.contactNumber || null,
     wholesalerData.gstNumber || null,
@@ -682,14 +857,14 @@ async function updateWholesaler(id, wholesalerData) {
 
 async function deleteWholesaler(id) {
   await getDatabase();
-  await run('DELETE FROM wholesalers WHERE id = ?', [id]);
+  run('DELETE FROM wholesalers WHERE id = ?', [id]);
 }
 
 // Shop Settings functions
 async function getSettings() {
   await getDatabase();
   // Always return the first row (single shop config model)
-  const row = await get('SELECT * FROM shop_settings LIMIT 1', []);
+  const row = get('SELECT * FROM shop_settings LIMIT 1', []);
   if (!row) {
     // Return default empty object if no row exists
     return {
@@ -698,7 +873,6 @@ async function getSettings() {
       phone: '',
       address: '',
       gst_number: '',
-      dl_number: '',
     };
   }
   return row;
@@ -707,13 +881,15 @@ async function getSettings() {
 async function saveSettings(settingsData) {
   await getDatabase();
   // Check if a row already exists
-  const existing = await get('SELECT id FROM shop_settings LIMIT 1', []);
+  const existing = get('SELECT id FROM shop_settings LIMIT 1', []);
   
   if (existing) {
     // Update existing row
-    await run(`
+    run(`
       UPDATE shop_settings 
-      SET shop_name = ?, owner_name = ?, phone = ?, address = ?, gst_number = ?, dl_number = ?, updated_at = CURRENT_TIMESTAMP
+      SET shop_name = ?, owner_name = ?, phone = ?, address = ?, gst_number = ?, 
+          bank_holder = ?, bank_name = ?, bank_account = ?, bank_ifsc = ?, bank_qr_path = ?, 
+          updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [
       settingsData.shop_name || '',
@@ -721,22 +897,30 @@ async function saveSettings(settingsData) {
       settingsData.phone || '',
       settingsData.address || '',
       settingsData.gst_number || '',
-      settingsData.dl_number || '',
+      settingsData.bank_holder || '',
+      settingsData.bank_name || '',
+      settingsData.bank_account || '',
+      settingsData.bank_ifsc || '',
+      settingsData.bank_qr_path || '',
       existing.id
     ]);
     return getSettings();
   } else {
     // Insert new row
-    const res = await run(`
-      INSERT INTO shop_settings (shop_name, owner_name, phone, address, gst_number, dl_number)
-      VALUES (?, ?, ?, ?, ?, ?)
+    const res = run(`
+      INSERT INTO shop_settings (shop_name, owner_name, phone, address, gst_number, bank_holder, bank_name, bank_account, bank_ifsc, bank_qr_path)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       settingsData.shop_name || '',
       settingsData.owner_name || '',
       settingsData.phone || '',
       settingsData.address || '',
       settingsData.gst_number || '',
-      settingsData.dl_number || ''
+      settingsData.bank_holder || '',
+      settingsData.bank_name || '',
+      settingsData.bank_account || '',
+      settingsData.bank_ifsc || '',
+      settingsData.bank_qr_path || ''
     ]);
     return getSettings();
   }
@@ -746,7 +930,7 @@ async function saveSettings(settingsData) {
 async function addProductType(typeData) {
   await getDatabase();
   try {
-    const res = await run('INSERT INTO product_types (id, label, is_default) VALUES (?, ?, ?)', [
+    const res = run('INSERT INTO product_types (id, label, is_default) VALUES (?, ?, ?)', [
       typeData.name || typeData.id,
       typeData.label,
       0 // custom types are never defaults
@@ -765,18 +949,18 @@ async function getProductTypes() {
 async function deleteProductType(typeId) {
   await getDatabase();
   // Never allow deleting defaults (check in frontend too)
-  const type = await get('SELECT * FROM product_types WHERE id = ?', [typeId]);
+  const type = get('SELECT * FROM product_types WHERE id = ?', [typeId]);
   if (type && type.is_default) {
     throw new Error('Cannot delete default product types');
   }
-  await run('DELETE FROM product_types WHERE id = ?', [typeId]);
+  run('DELETE FROM product_types WHERE id = ?', [typeId]);
 }
 
 // HSN Code functions
 async function addHSNCode(hsnData) {
   await getDatabase();
   try {
-    const res = await run(
+    const res = run(
       'INSERT INTO hsn_codes (hsn_code, description, gst_rate, is_active) VALUES (?, ?, ?, ?)',
       [
         hsnData.hsn_code,
@@ -793,7 +977,7 @@ async function addHSNCode(hsnData) {
 
 async function getHSNCodes() {
   await getDatabase();
-  const rows = await all('SELECT * FROM hsn_codes ORDER BY hsn_code ASC', []);
+  const rows = all('SELECT * FROM hsn_codes ORDER BY hsn_code ASC', []);
   // Convert is_active from 0/1 to boolean
   return rows.map(row => ({ ...row, is_active: row.is_active === 1 }));
 }
@@ -801,7 +985,7 @@ async function getHSNCodes() {
 async function updateHSNCode(hsnCode, hsnData) {
   await getDatabase();
   const is_active = hsnData.is_active !== undefined ? (hsnData.is_active ? 1 : 0) : 1;
-  await run(
+  run(
     'UPDATE hsn_codes SET description = ?, gst_rate = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE hsn_code = ?',
     [
       hsnData.description || '',
@@ -810,18 +994,64 @@ async function updateHSNCode(hsnCode, hsnData) {
       hsnCode
     ]
   );
-  const updated = await get('SELECT * FROM hsn_codes WHERE hsn_code = ?', [hsnCode]);
+  const updated = get('SELECT * FROM hsn_codes WHERE hsn_code = ?', [hsnCode]);
   return { ...updated, is_active: updated.is_active === 1 };
 }
 
 async function deleteHSNCode(hsnCode) {
   await getDatabase();
-  await run('DELETE FROM hsn_codes WHERE hsn_code = ?', [hsnCode]);
+  run('DELETE FROM hsn_codes WHERE hsn_code = ?', [hsnCode]);
 }
 
+// ═════════════════════════════════════════════════════════════════
 // Invoice functions
-async function createInvoice(invoiceData) {
-  await getDatabase();
+// ═════════════════════════════════════════════════════════════════
+
+// Helper: Get financial year (April to March)
+function getFinancialYear() {
+  const now = new Date();
+  const month = now.getMonth() + 1;  // 1 = Jan, 12 = Dec
+  const year = now.getFullYear();
+  if (month >= 4) {
+    // April or later → current financial year
+    return `${year}-${String(year + 1).slice(-2)}`;
+  } else {
+    // Jan to March → previous financial year
+    return `${year - 1}-${String(year).slice(-2)}`;
+  }
+}
+
+// Generate next invoice number using better-sqlite3 direct access
+function getNextInvoiceNumber() {
+  getDatabase();
+
+  const fy = getFinancialYear();
+  const prefix = `OE/${fy}/`;
+
+  // Use the internal module-level get() function
+  const lastInvoice = get(
+    `SELECT invoice_number FROM invoices
+     WHERE invoice_number LIKE ?
+     ORDER BY id DESC
+     LIMIT 1`,
+    [`${prefix}%`]
+  );
+
+  let nextNumber = 1;
+  if (lastInvoice && lastInvoice.invoice_number) {
+    const parts = lastInvoice.invoice_number.split('/');
+    const lastNum = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(lastNum)) {
+      nextNumber = lastNum + 1;
+    }
+  }
+
+  const padded = String(nextNumber).padStart(3, '0');
+  return `${prefix}${padded}`;
+}
+
+function createInvoice(invoiceData) {
+  getDatabase();
 
   try {
     // Calculate total amount
@@ -839,7 +1069,7 @@ async function createInvoice(invoiceData) {
       let subtotal = quantity * sellingRate;
 
       // Get batch to check stock
-      const batch = await get(
+      const batch = get(
         'SELECT * FROM batches WHERE product_id = ? AND batch_number = ?',
         [item.product_id, item.batch_number]
       );
@@ -889,19 +1119,33 @@ async function createInvoice(invoiceData) {
     const finalTotal = taxableAmount + totalGST;
 
     // Insert invoice
-    const invoiceRes = await run(
+    const invoiceRes = run(
       `INSERT INTO invoices (
-        customer_name, customer_phone, customer_dl_number, customer_address, 
-        notes, discount_percent, total_amount
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        customer_name, customer_phone, customer_address,
+        bill_to_gstin, bill_to_state,
+        ship_same_as_bill, ship_to_name, ship_to_address, ship_to_gstin, ship_to_state,
+        place_of_supply, eway_bill_no, invoice_number,
+        notes, discount_percent, tax_type, total_amount, customer_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        invoiceData.customer_name,
-        invoiceData.customer_phone || '',
-        invoiceData.customer_dl_number || '',
-        invoiceData.customer_address || '',
-        invoiceData.notes || '',
-        invoiceDiscountPercent,
-        finalTotal,
+        invoiceData.customer_name,          // 1
+        invoiceData.customer_phone   || '',  // 2
+        invoiceData.customer_address || '',  // 3
+        invoiceData.bill_to_gstin    || '',  // 4
+        invoiceData.bill_to_state    || '',  // 5
+        invoiceData.ship_same_as_bill ? 1 : 0, // 6
+        invoiceData.ship_to_name     || '',  // 7
+        invoiceData.ship_to_address  || '',  // 8
+        invoiceData.ship_to_gstin    || '',  // 9
+        invoiceData.ship_to_state    || '',  // 10
+        invoiceData.place_of_supply  || '',  // 11
+        invoiceData.eway_bill_no     || '',  // 12
+        invoiceData.invoice_number   || null, // 13
+        invoiceData.notes            || '',  // 14
+        invoiceDiscountPercent,              // 15
+        invoiceData.tax_type         || 'gst', // 16
+        finalTotal,                          // 17
+        invoiceData.customer_id      || null, // 18
       ]
     );
 
@@ -911,13 +1155,13 @@ async function createInvoice(invoiceData) {
     const savedItems = [];
     for (const item of itemsWithSubtotals) {
       // Get product name to store with item
-      const product = await get('SELECT name FROM products WHERE id = ?', [item.product_id]);
+      const product = get('SELECT name FROM products WHERE id = ?', [item.product_id]);
       const productName = product ? String(product.name).trim() : ''; // Ensure it's a non-empty string, never "0"
       
       // Use expiry_date from form if provided, otherwise fetch from batch
       let expiryDate = item.expiry_date || null;
       if (!expiryDate) {
-        const batch = await get(
+        const batch = get(
           'SELECT expiry_date FROM batches WHERE product_id = ? AND batch_number = ?',
           [item.product_id, item.batch_number]
         );
@@ -926,7 +1170,7 @@ async function createInvoice(invoiceData) {
       
       console.log(`[db] createInvoice: Adding item - Product: "${productName}", HSN: "${item.hsn_code}", Expiry: "${expiryDate}"`);
       
-      const itemRes = await run(
+      const itemRes = run(
         `INSERT INTO invoice_items (
           invoice_id, product_id, product_name, batch_number, quantity,
           original_selling_rate, selling_rate, mrp, hsn_code,
@@ -952,7 +1196,7 @@ async function createInvoice(invoiceData) {
       );
 
       // Deduct stock from batch
-      await run(
+      run(
         'UPDATE batches SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND batch_number = ?',
         [item.quantity, item.product_id, item.batch_number]
       );
@@ -970,17 +1214,20 @@ async function createInvoice(invoiceData) {
   }
 }
 
-async function getInvoices() {
-  await getDatabase();
-  const invoices = await all(
+function getInvoices() {
+  getDatabase();
+  const invoices = all(
     'SELECT * FROM invoices ORDER BY created_at DESC',
     []
   );
 
   const result = [];
   for (const inv of invoices) {
-    const items = await all(
-      'SELECT * FROM invoice_items WHERE invoice_id = ?',
+    const items = all(
+      `SELECT ii.*, p.unit
+       FROM invoice_items ii
+       LEFT JOIN products p ON ii.product_id = p.id
+       WHERE ii.invoice_id = ?`,
       [inv.id]
     );
     result.push({ ...inv, items });
@@ -988,76 +1235,424 @@ async function getInvoices() {
   return result;
 }
 
-async function getInvoiceById(id) {
-  await getDatabase();
-  const invoice = await get('SELECT * FROM invoices WHERE id = ?', [id]);
+function getInvoiceById(id) {
+  getDatabase();
+  const invoice = get('SELECT * FROM invoices WHERE id = ?', [id]);
   if (!invoice) return null;
 
-  const items = await all(
-    'SELECT * FROM invoice_items WHERE invoice_id = ?',
+  const items = all(
+    `SELECT ii.*, p.unit
+     FROM invoice_items ii
+     LEFT JOIN products p ON ii.product_id = p.id
+     WHERE ii.invoice_id = ?`,
     [id]
   );
 
   return { ...invoice, items };
 }
 
-async function deleteInvoice(id) {
-  await getDatabase();
+function deleteInvoice(id) {
+  getDatabase();
 
   // Get invoice with items to restore stock
-  const invoice = await getInvoiceById(id);
+  const invoice = getInvoiceById(id);
   if (!invoice) {
     throw new Error(`Invoice ${id} not found`);
   }
 
   // Restore stock for all items
   for (const item of invoice.items) {
-    await run(
+    run(
       'UPDATE batches SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND batch_number = ?',
       [item.quantity, item.product_id, item.batch_number]
     );
   }
 
   // Delete invoice items
-  await run('DELETE FROM invoice_items WHERE invoice_id = ?', [id]);
+  run('DELETE FROM invoice_items WHERE invoice_id = ?', [id]);
 
   // Delete invoice
-  await run('DELETE FROM invoices WHERE id = ?', [id]);
+  run('DELETE FROM invoices WHERE id = ?', [id]);
 }
 
-async function updateInvoice(id, invoiceData) {
-  await getDatabase();
+function updateInvoice(id, invoiceData) {
+  getDatabase();
 
-  // Update only metadata (customer info, notes)
-  await run(
-    `UPDATE invoices SET 
-      customer_name = ?, customer_phone = ?, customer_dl_number = ?, 
-      customer_address = ?, notes = ?, updated_at = CURRENT_TIMESTAMP 
+  // ── Step 1: Load the existing invoice to restore stock ──
+  const existingInvoice = getInvoiceById(id);
+  if (!existingInvoice) {
+    throw new Error(`Invoice ${id} not found`);
+  }
+
+  try {
+    exec('BEGIN TRANSACTION');
+
+    // ── Step 2: Restore stock for ALL old items ──
+    for (const oldItem of existingInvoice.items) {
+      if (!oldItem.product_id || !oldItem.batch_number) continue;
+
+      try {
+        run(
+          `UPDATE batches 
+           SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP 
+           WHERE product_id = ? AND batch_number = ?`,
+          [oldItem.quantity, oldItem.product_id, oldItem.batch_number]
+        );
+        console.log(`[db] updateInvoice: Restored ${oldItem.quantity} units to batch ${oldItem.batch_number}`);
+      } catch (restoreErr) {
+        console.warn(`[db] updateInvoice: Could not restore stock for batch ${oldItem.batch_number}:`, restoreErr.message);
+      }
+    }
+
+    // ── Step 3: Delete all old invoice_items ──
+    run('DELETE FROM invoice_items WHERE invoice_id = ?', [id]);
+
+    // ── Step 4: Recalculate totals from new items ──
+    const items = invoiceData.items || [];
+    let totalAmount = 0;
+    const processedItems = [];
+
+    for (const item of items) {
+      const quantity      = parseInt(item.quantity)             || 0;
+      const sellingRate   = parseFloat(item.selling_rate)       || 0;
+      const discountPct   = parseFloat(item.discount_percent)   || 0;
+      const gstPct        = parseFloat(item.gst_percent)        || 0;
+      const subtotal      = quantity * sellingRate;
+      const taxable       = subtotal * (1 - discountPct / 100);
+      const gstAmount     = taxable * (gstPct / 100);
+
+      // ── Step 5: Validate stock for new items ──
+      if (item.product_id && item.batch_number) {
+        const batch = get(
+          'SELECT * FROM batches WHERE product_id = ? AND batch_number = ?',
+          [item.product_id, item.batch_number]
+        );
+
+        if (!batch) {
+          throw new Error(
+            `Batch "${item.batch_number}" not found for product ${item.product_id}`
+          );
+        }
+
+        if (batch.quantity < quantity) {
+          throw new Error(
+            `Insufficient stock: batch "${item.batch_number}" has ${batch.quantity} units, ` +
+            `but ${quantity} requested`
+          );
+        }
+      }
+
+      totalAmount += taxable + gstAmount;
+
+      processedItems.push({
+        ...item,
+        quantity,
+        sellingRate,
+        discountPct,
+        gstPct,
+        subtotal,
+      });
+    }
+
+    // ── Step 6: Update invoice row ──
+    run(
+      `UPDATE invoices SET
+        customer_name     = ?,
+        customer_phone    = ?,
+        customer_address  = ?,
+        bill_to_name      = ?,
+        bill_to_phone     = ?,
+        bill_to_gstin     = ?,
+        bill_to_state     = ?,
+        ship_same_as_bill = ?,
+        ship_to_name      = ?,
+        ship_to_phone     = ?,
+        ship_to_address   = ?,
+        ship_to_gstin     = ?,
+        ship_to_state     = ?,
+        place_of_supply   = ?,
+        eway_bill_no      = ?,
+        invoice_number    = ?,
+        notes             = ?,
+        discount_percent  = ?,
+        tax_type          = ?,
+        total_amount      = ?,
+        customer_id       = ?,
+        updated_at        = CURRENT_TIMESTAMP
       WHERE id = ?`,
-    [
-      invoiceData.customer_name || '',
-      invoiceData.customer_phone || '',
-      invoiceData.customer_dl_number || '',
-      invoiceData.customer_address || '',
-      invoiceData.notes || '',
-      id,
-    ]
-  );
+      [
+        invoiceData.customer_name     || '',
+        invoiceData.customer_phone    || '',
+        invoiceData.customer_address  || '',
+        invoiceData.bill_to_name      || '',
+        invoiceData.bill_to_phone     || '',
+        invoiceData.bill_to_gstin     || '',
+        invoiceData.bill_to_state     || '',
+        invoiceData.ship_same_as_bill ? 1 : 0,
+        invoiceData.ship_to_name      || '',
+        invoiceData.ship_to_phone     || '',
+        invoiceData.ship_to_address   || '',
+        invoiceData.ship_to_gstin     || '',
+        invoiceData.ship_to_state     || '',
+        invoiceData.place_of_supply   || '',
+        invoiceData.eway_bill_no      || '',
+        invoiceData.invoice_number    || existingInvoice.invoice_number || '',
+        invoiceData.notes             || '',
+        parseFloat(invoiceData.discount_percent) || 0,
+        invoiceData.tax_type          || 'gst',
+        invoiceData.total_amount      || totalAmount,
+        invoiceData.customer_id       || null,
+        id,
+      ]
+    );
 
-  return getInvoiceById(id);
+    // ── Step 7: Insert new items + deduct stock ──
+    for (const item of processedItems) {
+      // Get product name fresh from DB (same as createInvoice)
+      let productName = item.product_name || '';
+      if (item.product_id) {
+        const product = get('SELECT name FROM products WHERE id = ?', [item.product_id]);
+        if (product) productName = String(product.name).trim();
+      }
+
+      // Get expiry_date from batch if not provided
+      let expiryDate = item.expiry_date || null;
+      if (!expiryDate && item.product_id && item.batch_number) {
+        const batch = get(
+          'SELECT expiry_date FROM batches WHERE product_id = ? AND batch_number = ?',
+          [item.product_id, item.batch_number]
+        );
+        if (batch) expiryDate = batch.expiry_date || null;
+      }
+
+      run(
+        `INSERT INTO invoice_items (
+          invoice_id, product_id, product_name, batch_number,
+          quantity, original_selling_rate, selling_rate, mrp,
+          hsn_code, discount_percent, gst_percent,
+          is_return, return_reason, subtotal, expiry_date
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          item.product_id       || null,
+          productName,
+          item.batch_number     || null,
+          item.quantity,
+          item.original_selling_rate || item.sellingRate,
+          item.sellingRate,
+          item.mrp              || null,
+          item.hsn_code         || null,
+          item.discountPct,
+          item.gstPct,
+          item.is_return        ? 1 : 0,
+          item.return_reason    || null,
+          item.subtotal,
+          expiryDate,
+        ]
+      );
+
+      // ── Deduct stock from batch ──
+      if (item.product_id && item.batch_number) {
+        run(
+          `UPDATE batches 
+           SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP 
+           WHERE product_id = ? AND batch_number = ?`,
+          [item.quantity, item.product_id, item.batch_number]
+        );
+        console.log(`[db] updateInvoice: Deducted ${item.quantity} from batch ${item.batch_number}`);
+      }
+    }
+
+    exec('COMMIT');
+    console.log(`[db] updateInvoice: SUCCESS — Invoice ${id} fully updated`);
+
+    // Return fresh complete invoice
+    return getInvoiceById(id);
+
+  } catch (err) {
+    console.error(`[db] updateInvoice: ERROR — Rolling back:`, err.message);
+    try {
+      exec('ROLLBACK');
+    } catch (rbErr) {
+      console.error(`[db] updateInvoice: ROLLBACK failed:`, rbErr.message);
+    }
+    throw err;
+  }
+}
+
+// ========== CUSTOMER MANAGEMENT FUNCTIONS ==========
+
+function getAllCustomers() {
+  getDatabase();
+  try {
+    const customers = all(
+      'SELECT * FROM customers ORDER BY customer_name ASC',
+      []
+    );
+    return customers || [];
+  } catch (err) {
+    console.error('[db] getAllCustomers error:', err);
+    throw err;
+  }
+}
+
+function getCustomerById(customerId) {
+  getDatabase();
+  try {
+    const customer = get(
+      'SELECT * FROM customers WHERE id = ?',
+      [customerId]
+    );
+    return customer || null;
+  } catch (err) {
+    console.error('[db] getCustomerById error:', err);
+    throw err;
+  }
+}
+
+function searchCustomers(searchTerm) {
+  getDatabase();
+  try {
+    const term = `%${searchTerm}%`;
+    const customers = all(
+      'SELECT * FROM customers WHERE customer_name LIKE ? OR phone_number LIKE ? ORDER BY customer_name ASC',
+      [term, term]
+    );
+    return customers || [];
+  } catch (err) {
+    console.error('[db] searchCustomers error:', err);
+    throw err;
+  }
+}
+
+function saveOrUpdateCustomer(customerData) {
+  getDatabase();
+  try {
+    const {
+      customer_name,
+      phone_number,
+      bill_to_address,
+      bill_to_gstin,
+      bill_to_state,
+      ship_to_name,
+      ship_to_address,
+      ship_to_gstin,
+      ship_to_state,
+      discount
+    } = customerData;
+
+    // Check if customer with same name and phone already exists
+    const existing = get(
+      'SELECT id FROM customers WHERE customer_name = ? AND phone_number = ?',
+      [customer_name, phone_number]
+    );
+
+    if (existing) {
+      // Update existing customer
+      run(
+        `UPDATE customers SET 
+          bill_to_address = ?, bill_to_gstin = ?, bill_to_state = ?,
+          ship_to_name = ?, ship_to_address = ?, ship_to_gstin = ?, ship_to_state = ?,
+          discount = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?`,
+        [
+          bill_to_address || null,
+          bill_to_gstin || null,
+          bill_to_state || null,
+          ship_to_name || null,
+          ship_to_address || null,
+          ship_to_gstin || null,
+          ship_to_state || null,
+          parseFloat(discount) || 0,
+          existing.id
+        ]
+      );
+      return getCustomerById(existing.id);
+    } else {
+      // Insert new customer
+      const res = run(
+        `INSERT INTO customers (
+          customer_name, phone_number,
+          bill_to_address, bill_to_gstin, bill_to_state,
+          ship_to_name, ship_to_address, ship_to_gstin, ship_to_state,
+          discount
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          customer_name,
+          phone_number || null,
+          bill_to_address || null,
+          bill_to_gstin || null,
+          bill_to_state || null,
+          ship_to_name || null,
+          ship_to_address || null,
+          ship_to_gstin || null,
+          ship_to_state || null,
+          parseFloat(discount) || 0
+        ]
+      );
+      return getCustomerById(res.lastID);
+    }
+  } catch (err) {
+    console.error('[db] saveOrUpdateCustomer error:', err);
+    throw err;
+  }
+}
+
+function updateCustomer(customerId, customerData) {
+  getDatabase();
+  try {
+    const {
+      customer_name,
+      phone_number,
+      bill_to_address,
+      bill_to_gstin,
+      bill_to_state,
+      ship_to_name,
+      ship_to_address,
+      ship_to_gstin,
+      ship_to_state,
+      discount
+    } = customerData;
+
+    run(
+      `UPDATE customers SET 
+        customer_name = ?, phone_number = ?,
+        bill_to_address = ?, bill_to_gstin = ?, bill_to_state = ?,
+        ship_to_name = ?, ship_to_address = ?, ship_to_gstin = ?, ship_to_state = ?,
+        discount = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?`,
+      [
+        customer_name,
+        phone_number || null,
+        bill_to_address || null,
+        bill_to_gstin || null,
+        bill_to_state || null,
+        ship_to_name || null,
+        ship_to_address || null,
+        ship_to_gstin || null,
+        ship_to_state || null,
+        parseFloat(discount) || 0,
+        customerId
+      ]
+    );
+    return getCustomerById(customerId);
+  } catch (err) {
+    console.error('[db] updateCustomer error:', err);
+    throw err;
+  }
 }
 
 // ========== DASHBOARD AGGREGATION FUNCTIONS ==========
 
-async function getDashboardSummary() {
-  await getDatabase();
+function getDashboardSummary() {
+  getDatabase();
   try {
     // Total products count
-    const productsCount = await get('SELECT COUNT(*) as count FROM products');
+    const productsCount = get('SELECT COUNT(*) as count FROM products');
     const totalProducts = productsCount?.count || 0;
 
     // Recent invoices count
-    const invoicesCount = await get('SELECT COUNT(*) as count FROM invoices');
+    const invoicesCount = get('SELECT COUNT(*) as count FROM invoices');
     const recentInvoices = invoicesCount?.count || 0;
 
     return {
@@ -1073,8 +1668,8 @@ async function getDashboardSummary() {
   }
 }
 
-async function getLowStockItems() {
-  await getDatabase();
+function getLowStockItems() {
+  getDatabase();
   try {
     // Query products with low stock
     const query = `
@@ -1091,7 +1686,7 @@ async function getLowStockItems() {
       ORDER BY (p.min_stock_level - current_stock) DESC
     `;
 
-    const lowStockProducts = await all(query);
+    const lowStockProducts = all(query);
 
     // Build response with severity levels
     const items = lowStockProducts.map(item => {
@@ -1122,48 +1717,10 @@ async function getLowStockItems() {
   }
 }
 
-async function getExpiryOverview(months = 1) {
-  await getDatabase();
-  try {
-    // Calculate date range (today to today + N months)
-    const today = new Date();
-    const expiryDate = new Date(today.getFullYear(), today.getMonth() + months, today.getDate());
-    const fromDate = today.toISOString().split('T')[0];
-    const toDate = expiryDate.toISOString().split('T')[0];
+// getExpiryOverview - REMOVED (not applicable to electric shop)
 
-    const query = `
-      SELECT 
-        b.id,
-        b.batch_number,
-        b.quantity,
-        b.expiry_date,
-        p.name as product_name,
-        p.product_type
-      FROM batches b
-      JOIN products p ON b.product_id = p.id
-      WHERE b.expiry_date IS NOT NULL 
-        AND b.expiry_date >= ? 
-        AND b.expiry_date <= ?
-        AND b.quantity > 0
-      ORDER BY b.expiry_date ASC
-    `;
-
-    const batches = await all(query, [fromDate, toDate]);
-
-    return {
-      success: true,
-      data: {
-        batches: batches || [],
-      },
-    };
-  } catch (error) {
-    console.error('[db] getExpiryOverview error:', error);
-    throw error;
-  }
-}
-
-async function getSalesOverview(period = 'month') {
-  await getDatabase();
+function getSalesOverview(period = 'month') {
+  getDatabase();
   try {
     let query = '';
     let params = [];
@@ -1193,7 +1750,7 @@ async function getSalesOverview(period = 'month') {
       params = [`${currentYear}-${currentMonth}`];
     }
 
-    const result = await get(query, params);
+    const result = get(query, params);
 
     return {
       success: true,
@@ -1210,8 +1767,8 @@ async function getSalesOverview(period = 'month') {
   }
 }
 
-async function getPurchaseOverview(period = 'month') {
-  await getDatabase();
+function getPurchaseOverview(period = 'month') {
+  getDatabase();
   try {
     let query = '';
     let params = [];
@@ -1245,7 +1802,7 @@ async function getPurchaseOverview(period = 'month') {
       params = [`${currentYear}-${currentMonth}`];
     }
 
-    const result = await get(query, params);
+    const result = get(query, params);
 
     return {
       success: true,
@@ -1264,8 +1821,8 @@ async function getPurchaseOverview(period = 'month') {
 
 // ========== PURCHASE BILL CRUD FUNCTIONS ==========
 
-async function createPurchaseBill(billData) {
-  await getDatabase();
+function createPurchaseBill(billData) {
+  getDatabase();
 
   try {
     // Parse and validate numeric values
@@ -1278,7 +1835,7 @@ async function createPurchaseBill(billData) {
     
     if (!wholesaler_id && billData.wholesaler_name) {
       // Try to find existing wholesaler by name
-      const existing = await get(
+      const existing = get(
         'SELECT id FROM wholesalers WHERE name = ?',
         [billData.wholesaler_name]
       );
@@ -1287,7 +1844,7 @@ async function createPurchaseBill(billData) {
         wholesaler_id = existing.id;
       } else {
         // Create new wholesaler if it doesn't exist
-        const result = await run(
+        const result = run(
           'INSERT INTO wholesalers (name, contactNumber, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
           [billData.wholesaler_name, billData.contact_number || null]
         );
@@ -1300,7 +1857,7 @@ async function createPurchaseBill(billData) {
     }
 
     // Insert purchase bill
-    const result = await run(
+    const result = run(
       `INSERT INTO purchase_bills (
         bill_number, purchase_date, wholesaler_id, total_amount, 
         amount_paid, amount_due, payment_status, notes, created_at, updated_at
@@ -1318,7 +1875,7 @@ async function createPurchaseBill(billData) {
     );
 
     // Fetch the created bill with wholesaler info
-    const bill = await get(
+    const bill = get(
       `SELECT 
         pb.id, pb.bill_number, pb.purchase_date, pb.total_amount, 
         pb.amount_paid, pb.amount_due, pb.payment_status, pb.notes,
@@ -1348,11 +1905,11 @@ async function createPurchaseBill(billData) {
   }
 }
 
-async function getPurchaseBills() {
-  await getDatabase();
+function getPurchaseBills() {
+  getDatabase();
 
   try {
-    const bills = await all(
+    const bills = all(
       `SELECT 
         pb.id, pb.bill_number, pb.purchase_date, pb.total_amount, 
         pb.amount_paid, pb.amount_due, pb.payment_status, pb.notes,
@@ -1381,12 +1938,12 @@ async function getPurchaseBills() {
   }
 }
 
-async function updatePurchaseBill(id, billData) {
-  await getDatabase();
+function updatePurchaseBill(id, billData) {
+  getDatabase();
 
   try {
     // Verify bill exists
-    const existingBill = await get('SELECT id FROM purchase_bills WHERE id = ?', [id]);
+    const existingBill = get('SELECT id FROM purchase_bills WHERE id = ?', [id]);
     if (!existingBill) {
       throw new Error(`Purchase bill ${id} not found`);
     }
@@ -1395,13 +1952,13 @@ async function updatePurchaseBill(id, billData) {
     const amount_paid = parseFloat(billData.amount_paid);
     
     // Fetch current total_amount to calculate amount_due
-    const current = await get('SELECT total_amount FROM purchase_bills WHERE id = ?', [id]);
+    const current = get('SELECT total_amount FROM purchase_bills WHERE id = ?', [id]);
     const total_amount = parseFloat(current.total_amount) || 0;
     const amount_due = total_amount - amount_paid;
     const payment_status = amount_paid >= total_amount ? 'paid' : (amount_paid > 0 ? 'partial' : 'unpaid');
 
     // Update purchase bill
-    await run(
+    run(
       `UPDATE purchase_bills SET 
         amount_paid = ?, amount_due = ?, payment_status = ?,
         notes = ?, updated_at = CURRENT_TIMESTAMP
@@ -1416,7 +1973,7 @@ async function updatePurchaseBill(id, billData) {
     );
 
     // Fetch and return updated bill with wholesaler info
-    const bill = await get(
+    const bill = get(
       `SELECT 
         pb.id, pb.bill_number, pb.purchase_date, pb.total_amount, 
         pb.amount_paid, pb.amount_due, pb.payment_status, pb.notes,
@@ -1446,21 +2003,21 @@ async function updatePurchaseBill(id, billData) {
   }
 }
 
-async function deletePurchaseBill(id) {
-  await getDatabase();
+function deletePurchaseBill(id) {
+  getDatabase();
 
   try {
     // Verify bill exists
-    const bill = await get('SELECT id FROM purchase_bills WHERE id = ?', [id]);
+    const bill = get('SELECT id FROM purchase_bills WHERE id = ?', [id]);
     if (!bill) {
       throw new Error(`Purchase bill ${id} not found`);
     }
 
     // Delete the purchase bill
-    await run('DELETE FROM purchase_bills WHERE id = ?', [id]);
+    run('DELETE FROM purchase_bills WHERE id = ?', [id]);
 
     // Verify deletion
-    const deleted = await get('SELECT id FROM purchase_bills WHERE id = ?', [id]);
+    const deleted = get('SELECT id FROM purchase_bills WHERE id = ?', [id]);
     if (deleted) {
       throw new Error(`Failed to delete purchase bill ${id}`);
     }
@@ -1472,8 +2029,8 @@ async function deletePurchaseBill(id) {
   }
 }
 
-async function getRecentInvoices(limit = 10) {
-  await getDatabase();
+function getRecentInvoices(limit = 10) {
+  getDatabase();
   try {
     const query = `
       SELECT 
@@ -1488,7 +2045,7 @@ async function getRecentInvoices(limit = 10) {
       LIMIT ?
     `;
 
-    const invoices = await all(query, [limit]);
+    const invoices = all(query, [limit]);
 
     return {
       success: true,
@@ -1509,10 +2066,10 @@ function hashPassword(password) {
   return crypto.createHash('sha256').update(password).digest('hex');
 }
 
-async function ownerExists() {
-  await getDatabase();
+function ownerExists() {
+  getDatabase();
   try {
-    const owner = await get('SELECT id FROM owners WHERE is_active = 1 LIMIT 1');
+    const owner = get('SELECT id FROM owners WHERE is_active = 1 LIMIT 1');
     return !!owner;
   } catch (error) {
     console.error('[db] ownerExists error:', error);
@@ -1520,10 +2077,10 @@ async function ownerExists() {
   }
 }
 
-async function verifyOwnerByUsername(username) {
-  await getDatabase();
+function verifyOwnerByUsername(username) {
+  getDatabase();
   try {
-    const owner = await get(
+    const owner = get(
       'SELECT id, username, email, first_name, last_name FROM owners WHERE (username = ? OR email = ?) AND is_active = 1',
       [username.toLowerCase(), username.toLowerCase()]
     );
@@ -1543,10 +2100,10 @@ async function verifyOwnerByUsername(username) {
   }
 }
 
-async function getOwner() {
-  await getDatabase();
+function getOwner() {
+  getDatabase();
   try {
-    const owner = await get('SELECT * FROM owners WHERE is_active = 1 LIMIT 1');
+    const owner = get('SELECT * FROM owners WHERE is_active = 1 LIMIT 1');
     return owner || null;
   } catch (error) {
     console.error('[db] getOwner error:', error);
@@ -1554,25 +2111,21 @@ async function getOwner() {
   }
 }
 
-async function registerOwner(username, email, password, firstName = '', lastName = '') {
-  await getDatabase();
+function registerOwner(username, email, password, firstName = '', lastName = '') {
+  getDatabase();
   try {
     // Check if owner already exists
-    const existing = await get('SELECT id FROM owners WHERE is_active = 1 LIMIT 1');
+    const existing = get('SELECT id FROM owners WHERE is_active = 1 LIMIT 1');
     if (existing) {
       throw new Error('Owner account already exists');
     }
 
     const passwordHash = hashPassword(password);
     
-    // Developer-controlled recovery code (fixed by developer)
-    const developerRecoveryCode = "Volley@921";
-    const recoveryCodeHash = hashPassword(developerRecoveryCode);
-    
-    const result = await run(
-      `INSERT INTO owners (username, email, password_hash, recovery_code_hash, first_name, last_name, is_active) 
-       VALUES (?, ?, ?, ?, ?, ?, 1)`,
-      [username.toLowerCase(), email.toLowerCase(), passwordHash, recoveryCodeHash, firstName, lastName]
+    const result = run(
+      `INSERT INTO owners (username, email, password_hash, first_name, last_name, is_active) 
+       VALUES (?, ?, ?, ?, ?, 1)`,
+      [username.toLowerCase(), email.toLowerCase(), passwordHash, firstName, lastName]
     );
 
     console.log('[db] Owner registered successfully');
@@ -1590,12 +2143,12 @@ async function registerOwner(username, email, password, firstName = '', lastName
   }
 }
 
-async function loginOwner(username, password) {
-  await getDatabase();
+function loginOwner(username, password) {
+  getDatabase();
   try {
     const passwordHash = hashPassword(password);
     
-    const owner = await get(
+    const owner = get(
       `SELECT * FROM owners WHERE (username = ? OR email = ?) AND is_active = 1 AND password_hash = ?`,
       [username.toLowerCase(), username.toLowerCase(), passwordHash]
     );
@@ -1619,46 +2172,11 @@ async function loginOwner(username, password) {
   }
 }
 
-async function resetPasswordWithRecoveryCode(username, recoveryCode, newPassword) {
-  await getDatabase();
-  try {
-    const recoveryCodeHash = hashPassword(recoveryCode);
-    const newPasswordHash = hashPassword(newPassword);
-
-    // Verify recovery code first
-    const owner = await get(
-      `SELECT * FROM owners WHERE (username = ? OR email = ?) AND is_active = 1 AND recovery_code_hash = ?`,
-      [username.toLowerCase(), username.toLowerCase(), recoveryCodeHash]
-    );
-
-    if (!owner) {
-      throw new Error('Invalid recovery code');
-    }
-
-    // Update password
-    const result = await run(
-      `UPDATE owners SET password_hash = ? WHERE id = ?`,
-      [newPasswordHash, owner.id]
-    );
-
-    if (result.changes === 0) {
-      throw new Error('Failed to reset password');
-    }
-
-    console.log('[db] Password reset with recovery code successful');
-    
-    return {
-      id: owner.id,
-      username: owner.username,
-      email: owner.email,
-      first_name: owner.first_name,
-      last_name: owner.last_name,
-    };
-  } catch (error) {
-    console.error('[db] resetPasswordWithRecoveryCode error:', error);
-    throw error;
-  }
-}
+// resetPasswordWithRecoveryCode - DISABLED (Admin Recovery Code removed)
+// Recovery code functionality has been removed from the system
+// async function resetPasswordWithRecoveryCode(username, recoveryCode, newPassword) {
+//   Functionality removed - users must use alternative password reset methods
+// }
 
 module.exports = {
   initializeDatabase,
@@ -1683,6 +2201,7 @@ module.exports = {
   getHSNCodes,
   updateHSNCode,
   deleteHSNCode,
+  getNextInvoiceNumber,
   createInvoice,
   getInvoices,
   getInvoiceById,
@@ -1690,7 +2209,7 @@ module.exports = {
   updateInvoice,
   getDashboardSummary,
   getLowStockItems,
-  getExpiryOverview,
+  // getExpiryOverview - REMOVED
   getSalesOverview,
   getPurchaseOverview,
   getRecentInvoices,
@@ -1698,10 +2217,14 @@ module.exports = {
   getPurchaseBills,
   updatePurchaseBill,
   deletePurchaseBill,
+  getAllCustomers,
+  getCustomerById,
+  searchCustomers,
+  saveOrUpdateCustomer,
+  updateCustomer,
   ownerExists,
   verifyOwnerByUsername,
   getOwner,
   registerOwner,
   loginOwner,
-  resetPasswordWithRecoveryCode,
 };

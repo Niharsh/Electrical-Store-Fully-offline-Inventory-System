@@ -25,6 +25,7 @@
     "concurrently": "^8.2.2",
     "electron": "^32.2.7",
     "electron-builder": "^25.1.8",
+    "tar": "^7.5.12",
     "wait-on": "^7.2.0"
   },
   "build": {
@@ -39,12 +40,16 @@
       {
         "from": "database",
         "to": "database",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "frontend/dist",
         "to": "frontend/dist",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "asarUnpack": [
@@ -59,7 +64,10 @@
     ],
     "win": {
       "icon": "unamed.ico",
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "certificateFile": null,
       "certificatePassword": null
     },
@@ -75,7 +83,6 @@
     }
   },
   "dependencies": {
-    "better-sqlite3": "^11.3.0",
-    "tar": "^7.5.11"
+    "better-sqlite3": "^11.3.0"
   }
 }

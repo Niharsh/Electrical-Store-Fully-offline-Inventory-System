@@ -31,6 +31,10 @@ export const ShopDetailsProvider = ({ children }) => {
           address: settings.address || '',
           gst_number: settings.gst_number || '',
           dl_number: settings.dl_number || '',
+          bank_holder: settings.bank_holder || '',
+          bank_name: settings.bank_name || '',
+          bank_account: settings.bank_account || '',
+          bank_ifsc: settings.bank_ifsc || '',
         };
 
         setShop(shopData);
@@ -39,12 +43,16 @@ export const ShopDetailsProvider = ({ children }) => {
         setError(err.message || 'Failed to load shop details');
         // Set default shop data on error
         setShop({
-          shop_name: 'Medical Store',
+          shop_name: 'Electrical Store',
           owner_name: '',
           phone: '',
           address: '',
           gst_number: '',
           dl_number: '',
+          bank_holder: '',
+          bank_name: '',
+          bank_account: '',
+          bank_ifsc: '',
         });
       } finally {
         setLoading(false);
