@@ -64,7 +64,7 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, "preload.js"),
     },
-    icon: path.join(__dirname, "../unamed.ico"),
+    icon: path.join(__dirname, "../build", "icon.png"),
   });
 
   // Load Vite dev server in development
@@ -106,15 +106,13 @@ function createWindow() {
         // Attempt to load anyway to allow error events to be emitted
         mainWindow.loadURL(devUrl).catch(err => console.error('[electron] loadURL error:', err));
         if (!app.isPackaged) {
-          mainWindow.webContents.openDevTools();
         }
       })
       .connect({ host, port });
 }  else {
     const prodFile = path.join(process.resourcesPath, 'frontend', 'dist', 'index.html');
     console.log('[electron] prodFile:', prodFile, 'exists:', fs.existsSync(prodFile));
-
-    mainWindow.webContents.openDevTools(); // ← TEMPORARY: remove after testing
+// ← TEMPORARY: remove after testing
 
     mainWindow.loadFile(prodFile)
       .then(() => console.log('[electron] loadFile success'))
@@ -200,9 +198,7 @@ function createActivationWindow() {
       // ↓ Fix GPU cache errors
       backgroundThrottling: false,
     },
-    ...(fs.existsSync(path.join(__dirname, "../unamed.ico")) && {
-      icon: path.join(__dirname, "../unamed.ico"),
-    }),
+    icon: path.join(__dirname, "../build/icon.png"),
   });
 
   // Only show window when page is ready
@@ -241,8 +237,7 @@ function createActivationWindow() {
       // Frontend is now in extraResources, outside asar
       const prodFile = path.join(process.resourcesPath, 'frontend', 'dist', 'index.html');
       console.log('[license-window] prodFile:', prodFile, 'exists:', fs.existsSync(prodFile));
-
-      activationWindow.webContents.openDevTools(); // ← TEMPORARY: remove after testing      
+    
       activationWindow.loadFile(prodFile, { hash: 'activate' })
       .then(() => console.log('[license-window] loadFile success'))
       .catch(err => console.error('[license-window] loadFile error:', err));
