@@ -8,9 +8,8 @@ import ErrorAlert from '../Common/ErrorAlert';
 const AddProductForm = ({ onProductAdded, editingProduct }) => {
   // ✅ REMOVED: productTypes, fetchProductTypes, typesLoading — no longer needed
   const { addProduct, updateProduct, error, hsns, fetchHSNs } = useProducts();
-  const { selectedWholesalerId, setSelectedWholesalerId, recordPurchase, getLastPurchasePrice, wholesalers } = useWholesalers();
+  const { selectedWholesalerId, setSelectedWholesalerId, recordPurchase, wholesalers } = useWholesalers();
   const [formError, setFormError] = useState('');
-  const [priceComparisonMsg, setPriceComparisonMsg] = useState('');
   const [loading, setLoading] = useState(false);
   // ✅ REMOVED: typesLoading state
   const [hsnLoading, setHsnLoading] = useState(true);
@@ -26,12 +25,8 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
   });
   const isEditMode = Boolean(formData?.id);
   const [batchForm, setBatchForm] = useState({
-    batch_number: '',
     mrp: '',
-    selling_rate: '',
-    cost_price: '',
     quantity: '',
-    expiry_date: '',
   });
 
   // ✅ REMOVED: fetchProductTypes() from this effect
@@ -89,66 +84,20 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
   const handleAddBatch = (e) => {
     e.preventDefault();
     setFormError('');
-    setPriceComparisonMsg('');
+
 
     if (!selectedWholesalerId && !isEditMode) {
       setFormError('Please select wholesaler before adding product batches');
       return;
     }
 
-    if (!batchForm.batch_number.trim()) {
-      setFormError('Batch number is required');
-      return;
-    }
-    if (!batchForm.mrp || parseFloat(batchForm.mrp) <= 0) {
-      setFormError('Valid MRP is required');
-      return;
-    }
-    if (!batchForm.selling_rate || parseFloat(batchForm.selling_rate) <= 0) {
-      setFormError('Valid Selling Rate is required');
-      return;
-    }
-    if (!batchForm.cost_price || parseFloat(batchForm.cost_price) <= 0) {
-      setFormError('Cost price must be greater than 0');
-      return;
-    }
-
-    const quantity = Number(batchForm.quantity);
-    if (!Number.isInteger(quantity) || quantity <= 0) {
-      setFormError('Quantity must be a whole number');
-      return;
-    }
-
-    if (parseFloat(batchForm.selling_rate) > parseFloat(batchForm.mrp)) {
-      setFormError('Selling rate cannot be greater than MRP');
-      return;
-    }
-
-    if (
-      formData.batches.find(
-        b =>
-          b.batch_number === batchForm.batch_number.trim() &&
-          b.wholesaler_id === selectedWholesalerId
-      )
-    ) {
-      setFormError('This batch already exists for the selected wholesaler');
-      return;
-    }
-
-    const lastPurchase = getLastPurchasePrice(selectedWholesalerId, formData.name.trim());
-    if (lastPurchase && Math.abs(lastPurchase.costPrice - parseFloat(batchForm.cost_price)) > 0.01) {
-      setPriceComparisonMsg(
-        `ℹ️ Note: On ${new Date(lastPurchase.purchaseDate).toLocaleDateString()}, you purchased this product at ₹${lastPurchase.costPrice.toFixed(2)}`
-      );
-    }
 
     const newBatch = {
-      batch_number: batchForm.batch_number.trim(),
       mrp: parseFloat(batchForm.mrp),
-      selling_rate: parseFloat(batchForm.selling_rate),
-      cost_price: parseFloat(batchForm.cost_price),
+      selling_rate: parseFloat(batchForm.mrp), // selling_rate = MRP by default, discount applied at billing
+      cost_price: 0,
       quantity: parseInt(batchForm.quantity),
-      expiry_date: batchForm.expiry_date || null,
+      expiry_date: null,
       wholesaler_id: selectedWholesalerId,
     };
 
@@ -158,12 +107,8 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
     }));
 
     setBatchForm({
-      batch_number: '',
       mrp: '',
-      selling_rate: '',
-      cost_price: '',
       quantity: '',
-      expiry_date: '',
     });
   };
 
@@ -241,14 +186,9 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
           batches: [],
         });
         setBatchForm({
-          batch_number: '',
           mrp: '',
-          selling_rate: '',
-          cost_price: '',
           quantity: '',
-          expiry_date: '',
         });
-        setPriceComparisonMsg('');
       }
 
       if (onProductAdded) {
@@ -402,17 +342,6 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
         <div className="card-compact bg-blue-50 border border-blue-200 mb-6">
           <h4 className="font-semibold mb-4 text-blue-900">New Batch</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-            <div className="form-group">
-              <label className="form-label form-label-required">Batch Number</label>
-              <input
-                type="text"
-                name="batch_number"
-                value={batchForm.batch_number}
-                onChange={handleBatchChange}
-                className="input-field"
-                placeholder="e.g., LOT-2024-001"
-              />
-            </div>
 
             <div className="form-group">
               <label className="form-label form-label-required">MRP (₹)</label>
@@ -429,34 +358,6 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
             </div>
 
             <div className="form-group">
-              <label className="form-label form-label-required">Selling Rate (₹)</label>
-              <input
-                type="number"
-                name="selling_rate"
-                value={batchForm.selling_rate}
-                onChange={handleBatchChange}
-                className="input-field"
-                step="0.01"
-                min="0"
-                placeholder="Your selling price"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label form-label-required">Cost Price (₹)</label>
-              <input
-                type="number"
-                name="cost_price"
-                value={batchForm.cost_price}
-                onChange={handleBatchChange}
-                className="input-field"
-                step="0.01"
-                min="0"
-                placeholder="Purchase price"
-              />
-            </div>
-
-            <div className="form-group">
               <label className="form-label form-label-required">Quantity</label>
               <input
                 type="number"
@@ -466,17 +367,6 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
                 className="input-field"
                 min="0"
                 placeholder="0"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Expiry Date (Optional)</label>
-              <input
-                type="date"
-                name="expiry_date"
-                value={batchForm.expiry_date}
-                onChange={handleBatchChange}
-                className="input-field"
               />
             </div>
           </div>
@@ -489,11 +379,6 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
             + Add Batch
           </button>
 
-          {priceComparisonMsg && (
-            <div className="alert alert-info mt-4">
-              {priceComparisonMsg}
-            </div>
-          )}
         </div>
 
         {/* Batches List */}
@@ -509,29 +394,9 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
                   key={index}
                   className="p-4 bg-white border-l-4 border-green-600 rounded space-y-3"
                 >
-                  <div className="font-semibold text-gray-900">
-                    Batch: {batch.batch_number}
-                  </div>
+                  
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
-                      <label className="text-sm font-medium">Selling Rate (₹)</label>
-                      <input
-                        type="number"
-                        value={batch.selling_rate}
-                        onChange={(e) => {
-                          const value = parseFloat(e.target.value);
-                          setFormData(prev => ({
-                            ...prev,
-                            batches: prev.batches.map((b, i) =>
-                              i === index ? { ...b, selling_rate: value } : b
-                            )
-                          }));
-                        }}
-                        className="input-field"
-                      />
-                    </div>
-
                     <div>
                       <label className="text-sm font-medium">Quantity</label>
                       <input
@@ -549,29 +414,10 @@ const AddProductForm = ({ onProductAdded, editingProduct }) => {
                         className="input-field"
                       />
                     </div>
-
-                    <div>
-                      <label className="text-sm font-medium">Expiry Date</label>
-                      <input
-                        type="date"
-                        value={batch.expiry_date || ''}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            batches: prev.batches.map((b, i) =>
-                              i === index ? { ...b, expiry_date: value } : b
-                            )
-                          }));
-                        }}
-                        className="input-field"
-                      />
-                    </div>
                   </div>
 
                   <div className="text-sm text-gray-600 grid grid-cols-2 md:grid-cols-3 gap-2">
                     <div><strong>MRP:</strong> ₹{batch.mrp}</div>
-                    <div><strong>Cost:</strong> ₹{batch.cost_price}</div>
                     <div><strong>Unit:</strong> {formData.unit}</div>
                   </div>
 

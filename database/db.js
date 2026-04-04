@@ -62,7 +62,7 @@ function exec(sql) {
 async function initializeDatabase() {
   if (db) return db;
 
-  const dbPath = path.join(app.getPath('userData'), 'medical_store.db');
+  const dbPath = path.join(app.getPath('userData'), 'electrical_store.db');
   console.log('[database] Initializing better-sqlite3 at:', dbPath);
 
   try {
@@ -455,7 +455,7 @@ async function addProduct(productData) {
 
     const res = run(insertSql, [
       productData.name,
-      productData.product_type,
+      productData.product_type || 'general',
       productData.hsn || null,
       productData.manufacturer || null,
       productData.min_stock_level ?? 10,
@@ -468,28 +468,43 @@ async function addProduct(productData) {
 
     const savedBatches = [];
     if (productData.batches && Array.isArray(productData.batches)) {
-      for (const batch of productData.batches) {
+      for (let i = 0; i < productData.batches.length; i++) {
+        const batch = productData.batches[i];
         try {
-          const batchRes = run(`
-            INSERT INTO batches (
-              product_id, batch_number, mrp, selling_rate, cost_price, 
-              quantity, expiry_date, wholesaler_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `, [
-            productId,
-            batch.batch_number,
-            batch.mrp,
-            batch.selling_rate,
-            batch.cost_price,
-            batch.quantity,
-            batch.expiry_date || null,
-            batch.wholesaler_id || null,
-          ]);
+          // Auto-generate batch_number — frontend no longer collects it
+          const autoBatchNumber = `AUTO-${productId}-${Date.now()}-${i}`;
+          const mrp = parseFloat(batch.mrp) || 0;
 
-          savedBatches.push({ id: batchRes.lastID, ...batch });
+          const batchRes = run(
+            `
+        INSERT INTO batches (
+          product_id, batch_number, mrp, selling_rate, cost_price,
+          quantity, expiry_date, wholesaler_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+            [
+              productId,
+              autoBatchNumber,
+              mrp,
+              mrp, // selling_rate = MRP by default, discount applied at billing
+              0, // cost_price not collected anymore
+              batch.quantity || 0,
+              null, // expiry_date not collected anymore
+              batch.wholesaler_id || null,
+            ],
+          );
+
+          savedBatches.push({
+            id: batchRes.lastID,
+            ...batch,
+            batch_number: autoBatchNumber,
+          });
         } catch (batchErr) {
-          console.error(`[db] addProduct: Batch insert failed, rolling back:`, batchErr.message);
-          throw batchErr; // Trigger rollback
+          console.error(
+            `[db] addProduct: Batch insert failed, rolling back:`,
+            batchErr.message,
+          );
+          throw batchErr;
         }
       }
     }
@@ -529,7 +544,7 @@ async function addProduct(productData) {
 async function getProducts() {
   await getDatabase();
   const products = all('SELECT * FROM products ORDER BY created_at DESC');
-  const getBatchesSql = 'SELECT * FROM batches WHERE product_id = ?';
+  const getBatchesSql ="SELECT * FROM batches WHERE product_id = ? ORDER BY created_at ASC";
   const getHSNSql = 'SELECT gst_rate FROM hsn_codes WHERE hsn_code = ?';
 
   const result = [];
@@ -546,7 +561,6 @@ async function getProducts() {
     }
     
     const resultItem = { ...p, batches, gst_rate: gstRate };
-    console.log(`[db] getProducts: ${p.name} - HSN: ${p.hsn}, GST Rate: ${gstRate}, Batches: ${batches.length}`);
     result.push(resultItem);
   }
   console.log(`[db] getProducts: Returning ${result.length} products`);
@@ -570,101 +584,79 @@ async function getProductById(id) {
   
   return { ...product, batches, gst_rate: gstRate };
 }
-
 async function searchProducts(query) {
   await getDatabase();
-  
+
   try {
     if (!query || query.trim().length === 0) {
       return [];
     }
 
     const searchTerm = query.trim().toLowerCase();
-    const prefixPattern = `${searchTerm}%`;      // Prefix search: "query%"
-    const partialPattern = `%${searchTerm}%`;    // Partial search: "%query%"
+    const prefixPattern = `${searchTerm}%`;
+    const partialPattern = `%${searchTerm}%`;
 
-    // Search products by name, generic_name, or salt_composition (case-insensitive)
-    // Prioritize prefix matches over partial matches using ORDER BY CASE
     const products = all(
       `SELECT DISTINCT p.* FROM products p
-       WHERE 
-         LOWER(p.name) LIKE ? OR 
-         LOWER(p.name) LIKE ? OR
-         LOWER(p.generic_name) LIKE ? OR 
-         LOWER(p.generic_name) LIKE ? OR
-         LOWER(p.salt_composition) LIKE ? OR 
-         LOWER(p.salt_composition) LIKE ?
-       ORDER BY 
-         CASE
-           WHEN LOWER(p.name) LIKE ? THEN 1
-           WHEN LOWER(p.generic_name) LIKE ? THEN 2
-           WHEN LOWER(p.salt_composition) LIKE ? THEN 3
-           ELSE 4
-         END ASC,
-         p.name ASC
-       LIMIT 50`,
-      [
-        prefixPattern, partialPattern,
-        prefixPattern, partialPattern,
-        prefixPattern, partialPattern,
-        prefixPattern,
-        prefixPattern,
-        prefixPattern
-      ]
+      WHERE 
+        LOWER(p.name) LIKE ? OR
+        LOWER(p.name) LIKE ?
+      ORDER BY
+        CASE
+          WHEN LOWER(p.name) LIKE ? THEN 1
+          ELSE 2
+        END ASC,
+        p.name ASC
+      LIMIT 50`,
+      [prefixPattern, partialPattern, prefixPattern],
     );
 
-    console.log(`[db] searchProducts: Found ${products.length} products for query "${query}"`);
+    console.log(
+      `[db] searchProducts: Found ${products.length} products for query "${query}"`,
+    );
 
-    // Fetch batches and calculate aggregated data for each product
     const result = [];
     for (const p of products) {
-      const batches = all('SELECT * FROM batches WHERE product_id = ? ORDER BY expiry_date ASC', [p.id]);
-      
-      // Calculate aggregated data from batches
-      let total_stock = 0;
-      let nearest_expiry = null;
-      let cost_price = null;
-      let selling_price = null;
+      // ✅ CHANGED: removed ORDER BY expiry_date (always null)
+      const batches = all(
+        "SELECT * FROM batches WHERE product_id = ? ORDER BY created_at ASC",
+        [p.id],
+      );
 
-      if (batches.length > 0) {
-        // Total stock from all batches
-        total_stock = batches.reduce((sum, b) => sum + (b.quantity || 0), 0);
-        
-        // Nearest expiry date (earliest non-null expiry)
-        const validExpiries = batches.filter(b => b.expiry_date).map(b => b.expiry_date);
-        if (validExpiries.length > 0) {
-          nearest_expiry = validExpiries[0]; // Already sorted by expiry_date ASC
-        }
-        
-        // Use cost_price and selling_rate from first batch
-        const firstBatch = batches[0];
-        cost_price = firstBatch.cost_price;
-        selling_price = firstBatch.selling_rate;
-      }
+      // Total stock
+      const total_stock = batches.reduce(
+        (sum, b) => sum + (b.quantity || 0),
+        0,
+      );
 
-      // Fetch GST rate from HSN codes if product has HSN
+      // ✅ ADDED: Max MRP across all batches
+      const max_mrp =
+        batches.length > 0
+          ? Math.max(...batches.map((b) => parseFloat(b.mrp || 0)))
+          : 0;
+
+      // GST rate from HSN
       let gstRate = null;
       if (p.hsn) {
-        const hsnData = get('SELECT gst_rate FROM hsn_codes WHERE hsn_code = ?', [p.hsn]);
-        if (hsnData) {
-          gstRate = hsnData.gst_rate;
-        }
+        const hsnData = get(
+          "SELECT gst_rate FROM hsn_codes WHERE hsn_code = ?",
+          [p.hsn],
+        );
+        if (hsnData) gstRate = hsnData.gst_rate;
       }
 
       result.push({
-        ...p,
+        ...p, // includes p.unit, p.name, p.hsn etc.
         batches,
         gst_rate: gstRate,
         total_stock: total_stock,
-        nearest_expiry: nearest_expiry,
-        cost_price: cost_price,
-        selling_price: selling_price,
+        mrp: max_mrp, // ✅ ADDED
       });
     }
 
     return result;
   } catch (error) {
-    console.error('[db] searchProducts error:', error);
+    console.error("[db] searchProducts error:", error);
     throw error;
   }
 }
@@ -714,21 +706,19 @@ async function deleteProduct(id) {
     throw err;
   }
 }
-
 async function updateProduct(id, productData) {
   await getDatabase();
 
   try {
     // Verify product exists before updating
-    const existingProduct = get('SELECT id FROM products WHERE id = ?', [id]);
+    const existingProduct = get('SELECT * FROM products WHERE id = ?', [id]);
     if (!existingProduct) {
       throw new Error(`Product ${id} not found`);
     }
-    
+
     // Start transaction
     exec('BEGIN TRANSACTION');
-    
-    // Update product fields
+
     const fields = [
       'name',
       'product_type',
@@ -740,73 +730,97 @@ async function updateProduct(id, productData) {
     ];
 
     const setClause = fields.map(f => `${f} = ?`).join(', ');
-    const values = fields.map(f => productData[f] ?? null);
 
-    run(`UPDATE products SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [...values, id]);
+    // ✅ FIXED: for product_type, always use existing DB value as fallback
+    // so NOT NULL is never violated even though UI stopped sending it
+    const values = fields.map(f => {
+      if (f === 'product_type') {
+        return productData.product_type || existingProduct.product_type || 'general';
+      }
+      return productData[f] ?? null;
+    });
+
+    run(
+      `UPDATE products SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [...values, id]
+    );
 
     // Handle batch updates with transaction safety
     if (productData.batches && Array.isArray(productData.batches)) {
-      // Get existing batches for this product
-      const existingBatches = all('SELECT * FROM batches WHERE product_id = ?', [id]);
-      const existingBatchNumbers = new Set(existingBatches.map(b => b.batch_number));
-      const newBatchNumbers = new Set(productData.batches.map(b => b.batch_number));
+      const existingBatches = all(
+        "SELECT * FROM batches WHERE product_id = ?",
+        [id],
+      );
 
-      // Insert or update batches
-      for (const batch of productData.batches) {
-        const existing = existingBatches.find(b => b.batch_number === batch.batch_number);
-        
-        if (existing) {
-          // Update existing batch
-          run(`
-            UPDATE batches SET 
-              mrp = ?, selling_rate = ?, cost_price = ?, 
-              quantity = ?, expiry_date = ?, wholesaler_id = ?,
-              updated_at = CURRENT_TIMESTAMP
-            WHERE product_id = ? AND batch_number = ?
-          `, [
-            batch.mrp,
-            batch.selling_rate,
-            batch.cost_price,
-            batch.quantity,
-            batch.expiry_date || null,
-            batch.wholesaler_id || null,
-            id,
-            batch.batch_number,
-          ]);
+      // Track which existing batch IDs are still present
+      const incomingIds = new Set(
+        productData.batches.filter((b) => b.id).map((b) => b.id),
+      );
+
+      for (let i = 0; i < productData.batches.length; i++) {
+        const batch = productData.batches[i];
+        const mrp = parseFloat(batch.mrp) || 0;
+
+        if (batch.id) {
+          // Update existing batch — matched by id
+          run(
+            `
+        UPDATE batches SET
+          mrp          = ?,
+          selling_rate = ?,
+          cost_price   = 0,
+          quantity     = ?,
+          expiry_date  = NULL,
+          wholesaler_id = ?,
+          updated_at   = CURRENT_TIMESTAMP
+        WHERE id = ? AND product_id = ?
+      `,
+            [
+              mrp,
+              mrp, // selling_rate = MRP, discount applied at billing
+              batch.quantity || 0,
+              batch.wholesaler_id || null,
+              batch.id,
+              id,
+            ],
+          );
         } else {
-          // Insert new batch
-          run(`
-            INSERT INTO batches (
-              product_id, batch_number, mrp, selling_rate, cost_price, 
-              quantity, expiry_date, wholesaler_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `, [
-            id,
-            batch.batch_number,
-            batch.mrp,
-            batch.selling_rate,
-            batch.cost_price,
-            batch.quantity,
-            batch.expiry_date || null,
-            batch.wholesaler_id || null,
-          ]);
+          // Insert new batch — auto-generate batch_number
+          const autoBatchNumber = `AUTO-${id}-${Date.now()}-${i}`;
+          run(
+            `
+        INSERT INTO batches (
+          product_id, batch_number, mrp, selling_rate, cost_price,
+          quantity, expiry_date, wholesaler_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+            [
+              id,
+              autoBatchNumber,
+              mrp,
+              mrp,
+              0,
+              batch.quantity || 0,
+              null,
+              batch.wholesaler_id || null,
+            ],
+          );
         }
       }
 
-      // Delete batches that were removed
+      // Delete batches that were removed (not in incoming list)
       for (const existing of existingBatches) {
-        if (!newBatchNumbers.has(existing.batch_number)) {
-          run('DELETE FROM batches WHERE product_id = ? AND batch_number = ?', [id, existing.batch_number]);
+        if (!incomingIds.has(existing.id)) {
+          run("DELETE FROM batches WHERE id = ?", [existing.id]);
         }
       }
     }
 
-    // Commit transaction
     exec('COMMIT');
-    
+
     console.log(`[db] updateProduct: SUCCESS - Product ${id} updated`);
     return getProductById(id);
-    
+
   } catch (err) {
     console.error(`[db] updateProduct: ERROR - Rolling back:`, err.message);
     try {
@@ -817,7 +831,6 @@ async function updateProduct(id, productData) {
     throw err;
   }
 }
-
 // Wholesaler functions
 async function addWholesaler(wholesalerData) {
   await getDatabase();
@@ -1065,22 +1078,26 @@ function createInvoice(invoiceData) {
       const discountPercent = parseFloat(item.discount_percent || 0);
       const gstPercent = parseFloat(item.gst_percent || 0);
 
-      // Calculate item subtotal before discount
-      let subtotal = quantity * sellingRate;
+      // subtotal = qty × selling_rate
+      // selling_rate is already post-discount (MRP × (1 - disc/100))
+      // DO NOT apply discount again
+      const subtotal = quantity * sellingRate;
 
-      // Get batch to check stock
+      // batch stock check stays unchanged...
       const batch = get(
-        'SELECT * FROM batches WHERE product_id = ? AND batch_number = ?',
-        [item.product_id, item.batch_number]
+        "SELECT * FROM batches WHERE product_id = ? AND batch_number = ?",
+        [item.product_id, item.batch_number],
       );
 
       if (!batch) {
-        throw new Error(`Batch ${item.batch_number} not found for product ${item.product_id}`);
+        throw new Error(
+          `Batch ${item.batch_number} not found for product ${item.product_id}`,
+        );
       }
 
       if (batch.quantity < quantity) {
         throw new Error(
-          `Insufficient stock: ${item.batch_number} has only ${batch.quantity} units, requested ${quantity}`
+          `Insufficient stock: ${item.batch_number} has only ${batch.quantity} units, requested ${quantity}`,
         );
       }
 
@@ -1093,30 +1110,21 @@ function createInvoice(invoiceData) {
         gstPercent,
       });
 
-      // Accumulate total (before invoice-level discount)
       totalAmount += subtotal;
     }
 
-    // Apply discount percentages
-    const invoiceDiscountPercent = parseFloat(invoiceData.discount_percent || 0);
-    // Calculate item-level discounts
-    let itemDiscountAmount = 0;
-    itemsWithSubtotals.forEach(item => {
-      itemDiscountAmount += (item.subtotal * item.discountPercent) / 100;
-    });
-    // Calculate invoice-level discount
-    const invoiceLevelDiscountAmount = (totalAmount * invoiceDiscountPercent) / 100;
-    const totalDiscountAmount = itemDiscountAmount + invoiceLevelDiscountAmount;
-    const taxableAmount = totalAmount - totalDiscountAmount;
+    // taxableAmount = totalAmount directly — no discount applied again
+    const taxableAmount = totalAmount;
 
-    // Calculate GST
+    // Calculate GST on taxableAmount per item
+    // selling_rate is already post-discount so full subtotal is taxable
     let totalGST = 0;
-    itemsWithSubtotals.forEach(item => {
-      const itemTaxable = (item.subtotal * (100 - item.discountPercent)) / 100;
-      totalGST += (itemTaxable * item.gstPercent) / 100;
+    itemsWithSubtotals.forEach((item) => {
+      totalGST += (item.subtotal * item.gstPercent) / 100;
     });
 
     const finalTotal = taxableAmount + totalGST;
+    const invoiceDiscountPercent = invoiceData.discount_percent || 0;
 
     // Insert invoice
     const invoiceRes = run(
@@ -1317,9 +1325,11 @@ function updateInvoice(id, invoiceData) {
       const sellingRate   = parseFloat(item.selling_rate)       || 0;
       const discountPct   = parseFloat(item.discount_percent)   || 0;
       const gstPct        = parseFloat(item.gst_percent)        || 0;
-      const subtotal      = quantity * sellingRate;
-      const taxable       = subtotal * (1 - discountPct / 100);
-      const gstAmount     = taxable * (gstPct / 100);
+      const subtotal = quantity * sellingRate;
+      // selling_rate already post-discount — no discount applied again
+      const gstAmount = subtotal * (gstPct / 100);
+
+      totalAmount += subtotal + gstAmount;
 
       // ── Step 5: Validate stock for new items ──
       if (item.product_id && item.batch_number) {
@@ -1676,12 +1686,11 @@ function getLowStockItems() {
       SELECT 
         p.id as product_id,
         p.name as product_name,
-        p.product_type,
         p.min_stock_level,
         COALESCE(SUM(b.quantity), 0) as current_stock
       FROM products p
       LEFT JOIN batches b ON p.id = b.product_id
-      GROUP BY p.id, p.name, p.product_type, p.min_stock_level
+      GROUP BY p.id, p.name, p.min_stock_level
       HAVING current_stock <= p.min_stock_level
       ORDER BY (p.min_stock_level - current_stock) DESC
     `;
@@ -1689,20 +1698,20 @@ function getLowStockItems() {
     const lowStockProducts = all(query);
 
     // Build response with severity levels
-    const items = lowStockProducts.map(item => {
+    const items = lowStockProducts.map((item) => {
       const unitsBelow = item.min_stock_level - item.current_stock;
-      const severity = unitsBelow > item.min_stock_level * 0.5 ? 'critical' : 'warning';
+      const severity =
+        unitsBelow > item.min_stock_level * 0.5 ? "critical" : "warning";
 
       return {
         product_id: item.product_id,
         product_name: item.product_name,
-        product_type: item.product_type,
         current_stock: item.current_stock,
         min_stock_level: item.min_stock_level,
         units_below: unitsBelow,
         severity: severity,
       };
-    });
+    }); 
 
     return {
       success: true,
@@ -2194,9 +2203,6 @@ module.exports = {
   deleteWholesaler,
   getSettings,
   saveSettings,
-  addProductType,
-  getProductTypes,
-  deleteProductType,
   addHSNCode,
   getHSNCodes,
   updateHSNCode,

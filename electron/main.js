@@ -49,7 +49,7 @@ app.on("second-instance", () => {
 
 // Windows: set AppUserModelId for proper shortcuts & notifications
 if (process.platform === "win32" && app.setAppUserModelId) {
-  app.setAppUserModelId("com.choudharymedical.billing");
+  app.setAppUserModelId("com.choudharyelectrical.billing");
 }
 
 // Create the browser window
@@ -91,7 +91,6 @@ function createWindow() {
         socket.destroy();
         mainWindow.loadURL(devUrl).catch(err => console.error('[electron] loadURL error:', err));
         if (!app.isPackaged) {
-          mainWindow.webContents.openDevTools();
         }
       })
       .once('timeout', () => {
@@ -100,7 +99,6 @@ function createWindow() {
         // Still attempt to load - may fail but will surface did-fail-load
         mainWindow.loadURL(devUrl).catch(err => console.error('[electron] loadURL error:', err));
         if (!app.isPackaged) {
-          mainWindow.webContents.openDevTools();
         }
       })
       .once('error', (err) => {
@@ -1212,7 +1210,7 @@ ipcMain.handle("backup-database", async (event) => {
   try {
     console.log('[ipc] backup-database triggered');
     const userDataPath = app.getPath("userData");
-    const dbPath = path.join(userDataPath, "medical_store.db");
+    const dbPath = path.join(userDataPath, "electrical_store.db");
     
     // Check if database file exists
     if (!fs.existsSync(dbPath)) {
@@ -1222,7 +1220,7 @@ ipcMain.handle("backup-database", async (event) => {
     // Generate default filename with current date
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
-    const defaultFilename = `medical_store_backup_${dateStr}.db`;
+    const defaultFilename = `electrical_store_backup_${dateStr}.db`;
 
     // Show save dialog
     const result = await dialog.showSaveDialog(mainWindow, {
@@ -1260,7 +1258,7 @@ ipcMain.handle("restore-database", async (event) => {
   try {
     console.log('[ipc] restore-database triggered');
     const userDataPath = app.getPath("userData");
-    const dbPath = path.join(userDataPath, "medical_store.db");
+    const dbPath = path.join(userDataPath, "electrical_store.db");
 
     // Show open dialog to select backup file
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -1376,7 +1374,7 @@ app.on("window-all-closed", async () => {
   // Auto-backup database before exit
   try {
     const userDataPath = app.getPath("userData");
-    const dbPath = path.join(userDataPath, "medical_store.db");
+    const dbPath = path.join(userDataPath, "electrical_store.db");
     const backupsDir = path.join(userDataPath, "backups");
 
     if (fs.existsSync(dbPath)) {

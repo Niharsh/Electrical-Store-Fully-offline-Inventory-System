@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Choudhary Medical Store - Electron Installation & Verification Script
+# Choudhary Electrical Store - Electron Installation & Verification Script
 # This script sets up Electron and verifies all components work correctly
 
 set -e
 
 echo "╔═══════════════════════════════════════════════════════════════╗"
-echo "║  Choudhary Medical Store - Electron Setup & Verification    ║"
+echo "║  Choudhary Electrical Store - Electron Setup & Verification    ║"
 echo "╚═══════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -122,7 +122,7 @@ echo "   • DevTools for debugging"
 echo ""
 echo -e "${YELLOW}📦 Build for Distribution:${NC}"
 echo -e "   ${YELLOW}npm run dist${NC}"
-echo "   Creates: dist-electron/Choudhary Medical Store-1.0.0.exe"
+echo "   Creates: dist-electron/Choudhary Electrical Store-1.0.0.exe"
 echo ""
 echo -e "${YELLOW}✨ Features that work:${NC}"
 echo "   ✓ React hot-reload (HMR)"

@@ -25,6 +25,8 @@ const BillingForm = ({ onBillingComplete }) => {
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [saveCustomerDetails,  setSaveCustomerDetails]  = useState(false);
   const [invoiceNumber,        setInvoiceNumber]        = useState('');
+  const [globalDiscount,      setGlobalDiscount]      = useState(0);
+  const [manualDiscountItems, setManualDiscountItems] = useState(new Set());
 
   const [formData, setFormData] = useState({
     customer_name:    '',
@@ -145,6 +147,7 @@ const BillingForm = ({ onBillingComplete }) => {
           hsn_code:              item.hsn_code      || '',
           expiry_date:           item.expiry_date   || '',
           discount_percent:      item.discount_percent != null ? String(item.discount_percent) : '0',
+          discount_pct:          item.discount_percent != null ? String(item.discount_percent) : '0', // for backward compatibility
           gst_percent:           item.gst_percent   != null ? String(item.gst_percent) : '',
           is_return:             item.is_return === 1 || item.is_return === true,
           return_reason:         item.return_reason || '',
@@ -160,6 +163,9 @@ const BillingForm = ({ onBillingComplete }) => {
       } finally {
         setEditLoading(false);
       }
+      setManualDiscountItems(
+        new Set(mappedItems.map((_, i) => i))
+      );
     };
 
     loadInvoice();
@@ -173,6 +179,9 @@ const BillingForm = ({ onBillingComplete }) => {
 
     const ship_to_name     = customer.ship_to_name || customer.customer_name;
     const ship_same_as_bill = !customer.ship_to_name || ship_to_name === customer.customer_name;
+
+    const customerDiscount = parseFloat(customer.discount) || 0;
+    setGlobalDiscount(customerDiscount);
 
     setFormData({
       customer_name:    customer.customer_name || '',
@@ -224,6 +233,52 @@ const BillingForm = ({ onBillingComplete }) => {
     });
   };
 
+  // ── Global discount change handler ─────────────────────────────────
+  const handleGlobalDiscountChange = (value) => {
+    const newGlobal = parseFloat(value) || 0;
+    setGlobalDiscount(newGlobal);
+
+    setFormData(prev => ({ ...prev, discount_percent: value }));
+
+    // Only update items NOT manually overridden
+    setBillItems(prev =>
+      prev.map((item, index) => {
+        if (manualDiscountItems.has(index)) return item; // protected
+
+        const mrp = parseFloat(item.mrp) || 0;
+        if (!mrp) return { ...item, discount_pct: newGlobal }; // no MRP yet, just store
+
+        const newRate = parseFloat((mrp * (1 - newGlobal / 100)).toFixed(2));
+        return {
+          ...item,
+          discount_pct:  newGlobal,
+          selling_rate:  String(newRate),
+        };
+      })
+    );
+  };
+
+  // ── Individual item discount change handler ─────────────────────────────
+  const handleItemDiscountChange = (index, value) => {
+    const disc = parseFloat(value) || 0;
+
+    // Mark this item as manually overridden
+    setManualDiscountItems(prev => new Set([...prev, index]));
+
+    setBillItems(prev =>
+      prev.map((item, i) => {
+        if (i !== index) return item;
+        const mrp     = parseFloat(item.mrp) || 0;
+        const newRate = parseFloat((mrp * (1 - disc / 100)).toFixed(2));
+        return {
+          ...item,
+          discount_pct: disc,
+          selling_rate: String(newRate),
+        };
+      })
+    );
+  };
+
   const filteredCustomers = customerSearchText
     ? customers.filter(c =>
         c.customer_name.toLowerCase().includes(customerSearchText.toLowerCase()) ||
@@ -233,20 +288,23 @@ const BillingForm = ({ onBillingComplete }) => {
 
   // ── Item helpers ─────────────────────────────────────────────────
   const handleAddItem = () => {
-    setBillItems([...billItems, {
-      product_id:            '',
-      batch_number:          '',
-      quantity:              '',
-      original_selling_rate: '',
-      selling_rate:          '',
-      mrp:                   '',
-      hsn_code:              '',
-      expiry_date:           '',
-      discount_percent:      formData.discount_percent || '',
-      gst_percent:           '',
-      is_return:             false,
-      return_reason:         '',
-    }]);
+    setBillItems(prev => [
+      ...prev,
+      {
+        product_id:            '',
+        batch_number:          '',
+        quantity:              '',
+        original_selling_rate: '',
+        selling_rate:          '',   // calculated, not entered
+        mrp:                   '',   // readonly, from batch
+        hsn_code:              '',
+        discount_pct:          globalDiscount,  // prefilled from global
+        gst_percent:           '',
+        is_return:             false,
+        return_reason:         '',
+      }
+    ]);
+    // new items are NOT added to manualDiscountItems — follow global
   };
 
   const handleItemChange = (index, field, value) => {
@@ -255,34 +313,50 @@ const BillingForm = ({ onBillingComplete }) => {
 
     if (field === 'product_id' && value) {
       const selectedProduct = products.find(p => p.id === parseInt(value));
-      if (selectedProduct && selectedProduct.batches && selectedProduct.batches.length > 0) {
+      if (selectedProduct?.batches?.length > 0) {
         const firstBatch = selectedProduct.batches.find(b => b.quantity > 0)
                         || selectedProduct.batches[0];
+
+        const mrp      = parseFloat(firstBatch.mrp) || 0;
+        const disc     = manualDiscountItems.has(index)
+                           ? (updatedItems[index].discount_pct ?? globalDiscount)
+                           : globalDiscount;
+        const calcRate = parseFloat((mrp * (1 - disc / 100)).toFixed(2));
+
         updatedItems[index].batch_number          = firstBatch.batch_number;
-        updatedItems[index].original_selling_rate = String(firstBatch.selling_rate);
-        updatedItems[index].selling_rate          = String(firstBatch.selling_rate);
-        updatedItems[index].mrp                   = String(firstBatch.mrp);
+        updatedItems[index].mrp                   = String(mrp);
+        updatedItems[index].original_selling_rate = String(calcRate);
+        updatedItems[index].selling_rate          = String(calcRate);
+        updatedItems[index].discount_pct          = disc;
         updatedItems[index].hsn_code              = selectedProduct.hsn || '';
         updatedItems[index].gst_percent           = String(selectedProduct.gst_rate || '');
       } else {
         updatedItems[index].batch_number          = '';
+        updatedItems[index].mrp                   = '';
         updatedItems[index].original_selling_rate = '';
         updatedItems[index].selling_rate          = '';
-        updatedItems[index].mrp                   = '';
         updatedItems[index].hsn_code              = '';
         updatedItems[index].gst_percent           = '';
       }
     }
 
     if (field === 'batch_number' && updatedItems[index].product_id) {
-      const selectedProduct = products.find(p => p.id === parseInt(updatedItems[index].product_id));
+      const selectedProduct = products.find(
+        p => p.id === parseInt(updatedItems[index].product_id)
+      );
       if (selectedProduct?.batches) {
         const batch = selectedProduct.batches.find(b => b.batch_number === value);
         if (batch) {
-          updatedItems[index].original_selling_rate = String(batch.selling_rate);
-          updatedItems[index].selling_rate          = String(batch.selling_rate);
-          updatedItems[index].mrp                   = String(batch.mrp);
-          updatedItems[index].expiry_date           = batch.expiry_date || '';
+          const mrp      = parseFloat(batch.mrp) || 0;
+          const disc     = manualDiscountItems.has(index)
+                             ? (updatedItems[index].discount_pct ?? globalDiscount)
+                             : globalDiscount;
+          const calcRate = parseFloat((mrp * (1 - disc / 100)).toFixed(2));
+
+          updatedItems[index].mrp                   = String(mrp);
+          updatedItems[index].original_selling_rate = String(calcRate);
+          updatedItems[index].selling_rate          = String(calcRate);
+          updatedItems[index].discount_pct          = disc;
         }
       }
     }
@@ -291,7 +365,17 @@ const BillingForm = ({ onBillingComplete }) => {
   };
 
   const handleRemoveItem = (index) => {
-    setBillItems(billItems.filter((_, i) => i !== index));
+    setBillItems(prev => prev.filter((_, i) => i !== index));
+
+    // Rebuild Set with shifted indexes
+    setManualDiscountItems(prev => {
+      const updated = new Set();
+      prev.forEach(i => {
+        if (i < index)  updated.add(i);
+        if (i > index)  updated.add(i - 1); // shift down
+      });
+      return updated;
+    });
   };
 
   // ── Build payload (shared between create and update) ─────────────
@@ -338,7 +422,7 @@ const BillingForm = ({ onBillingComplete }) => {
         mrp:                   parseFloat(item.mrp)  || null,
         hsn_code:              item.hsn_code         || '',
         expiry_date:           item.expiry_date      || '',
-        discount_percent:      parseFloat(item.discount_percent) || 0,
+        discount_percent:      parseFloat(item.discount_pct) || 0,
         gst_percent:           parseFloat(item.gst_percent)      || 0,
         is_return:             item.is_return  || false,
         return_reason:         item.return_reason || '',
@@ -359,11 +443,14 @@ const BillingForm = ({ onBillingComplete }) => {
 
       for (let i = 0; i < billItems.length; i++) {
         const item = billItems[i];
-        if (!item.product_id || !item.batch_number || !item.quantity || !item.selling_rate) {
-          throw new Error(`Item ${i + 1} is missing required fields (product, batch, quantity, selling rate)`);
+        if (!item.product_id || !item.batch_number || !item.quantity) {
+          throw new Error(`Item ${i + 1} is missing required fields (product, batch, quantity)`);
         }
-        if (parseFloat(item.selling_rate) <= 0) {
-          throw new Error(`Item ${i + 1}: Selling rate must be greater than 0`);
+        if (parseInt(item.quantity) <= 0) {
+          throw new Error(`Item ${i + 1}: Quantity must be greater than 0`);
+        }
+        if (!item.mrp || parseFloat(item.mrp) <= 0) {
+          throw new Error(`Item ${i + 1}: MRP is missing. Re-select the product.`);
         }
       }
 
@@ -373,19 +460,19 @@ const BillingForm = ({ onBillingComplete }) => {
       //  EDIT MODE
       // ════════════════════════════════════════════════════
       if (isEditMode) {
-        console.log('📤 BillingForm EDIT: Sending update for invoice', invoiceId);
-        const res = await window.api.updateInvoice(Number(invoiceId), payload);
+      const res = await window.api.updateInvoice(Number(invoiceId), payload);
 
-        if (!res.success) {
-          throw new Error(res.message || res.error || 'Failed to update invoice');
-        }
-
-        console.log('✅ BillingForm EDIT: Invoice updated successfully');
-
-        // Navigate to view the updated invoice
-        navigate(`/billing/invoices/${invoiceId}`);
-        return;
+      if (!res.success) {
+        throw new Error(res.message || res.error || 'Failed to update invoice');
       }
+    
+      console.log('✅ BillingForm EDIT: Invoice updated successfully');
+    
+      // Use REPLACE instead of PUSH so edit page is removed from history stack
+      // Back from invoice view will go to invoice list, not back to edit
+      navigate(`/billing/invoices/${invoiceId}`, { replace: true });
+      return;
+    }
 
       // ════════════════════════════════════════════════════
       //  CREATE MODE  (original logic — unchanged)
@@ -512,7 +599,7 @@ const BillingForm = ({ onBillingComplete }) => {
         {isEditMode && (
           <button
             type="button"
-            onClick={() => navigate(`/billing/invoices/${invoiceId}`)}
+            onClick={() => navigate(`/billing/invoices/${invoiceId}`, { replace: true })}
             className="btn-secondary text-sm px-3 py-1"
           >
             ← Back to Invoice
@@ -789,16 +876,21 @@ const BillingForm = ({ onBillingComplete }) => {
         </div>
 
         <div className="form-group">
-          <label className="form-label">Discount (%)</label>
+          <label className="form-label">
+            Global Discount (%)
+            <span className="text-xs text-gray-500 ml-2 font-normal">
+              — applies to new items only
+            </span>
+          </label>
           <input
             type="number"
             min="0"
             max="100"
             step="0.01"
             value={formData.discount_percent}
-            onChange={(e) => setFormData({ ...formData, discount_percent: e.target.value })}
+            onChange={(e) => handleGlobalDiscountChange(e.target.value)}
             className="input-field"
-            placeholder="Optional discount percentage"
+            placeholder="0"
           />
         </div>
 
@@ -811,8 +903,15 @@ const BillingForm = ({ onBillingComplete }) => {
           >
             <option value="gst">GST — CGST + SGST (Intrastate)</option>
             <option value="igst">IGST (Interstate)</option>
+            <option value="none">None (No tax)</option>
           </select>
-          <p className="text-xs text-gray-500 mt-1">Select IGST for interstate supply</p>
+          <p className="text-xs text-gray-500 mt-1">
+            {formData.tax_type === 'None'
+              ? 'No tax will be applied to items. Grand total will be sum of item totals.'
+            : formData.tax_type === 'igst'
+              ? 'IGST applied for Interstate supply.'
+              : 'SGST and CGST applied for Intrastate supply.'}
+          </p>
         </div>
       </div>
 
@@ -856,7 +955,7 @@ const BillingForm = ({ onBillingComplete }) => {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4">
                   <div className="form-group">
                     <label className="form-label form-label-required text-xs">Product</label>
                     <select
@@ -907,27 +1006,53 @@ const BillingForm = ({ onBillingComplete }) => {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label form-label-required text-xs">
-                      Selling Rate (₹)
-                      {item.selling_rate && item.original_selling_rate &&
-                        Math.abs(parseFloat(item.selling_rate) - parseFloat(item.original_selling_rate)) > 0.01 && (
-                          <span className="badge badge-warning ml-1 text-xs">EDITED</span>
-                        )}
+                    <label className="form-label text-xs">MRP (₹)</label>
+                    <input
+                      type="number"
+                      value={item.mrp || ''}
+                      readOnly
+                      tabIndex={-1}
+                      className="input-field text-sm bg-gray-100 cursor-not-allowed"
+                      placeholder="—"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label text-xs">
+                      Discount (%)
+                      {manualDiscountItems.has(index) && (
+                        <span className="ml-1 text-amber-600 text-xs" title="Custom — not affected by global">
+                          ✎ custom
+                        </span>
+                      )}
                     </label>
                     <input
                       type="number"
-                      value={item.selling_rate}
-                      onChange={(e) => handleItemChange(index, 'selling_rate', e.target.value)}
+                        value={item.discount_pct !== undefined && item.discount_pct !== null
+                          ? item.discount_pct
+                          : globalDiscount}
+                      onChange={(e) => handleItemDiscountChange(index, e.target.value)}
                       className={`input-field text-sm ${
-                        item.selling_rate && item.original_selling_rate &&
-                        Math.abs(parseFloat(item.selling_rate) - parseFloat(item.original_selling_rate)) > 0.01
+                        manualDiscountItems.has(index)
                           ? 'bg-amber-50 border-amber-300'
                           : ''
                       }`}
+                      min="0"
+                      max="100"
                       step="0.01"
-                      min="0.01"
-                      placeholder="Price"
-                      required
+                      placeholder="0"
+                    />
+                  </div>
+                    
+                  <div className="form-group">
+                    <label className="form-label text-xs">Selling Price (₹)</label>
+                    <input
+                      type="number"
+                      value={item.selling_rate || ''}
+                      readOnly
+                      tabIndex={-1}
+                      className="input-field text-sm bg-gray-100 cursor-not-allowed"
+                      placeholder="—"
                     />
                   </div>
 
@@ -941,20 +1066,6 @@ const BillingForm = ({ onBillingComplete }) => {
 
                 {/* Discount & GST Row */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-200">
-                  <div className="form-group">
-                    <label className="form-label text-xs">Discount (%)</label>
-                    <input
-                      type="number"
-                      value={item.discount_percent}
-                      onChange={(e) => handleItemChange(index, 'discount_percent', e.target.value)}
-                      className="input-field text-sm"
-                      min="0"
-                      max="100"
-                      step="0.01"
-                      placeholder="Discount %"
-                    />
-                  </div>
-
                   <div className="form-group">
                     <label className="form-label text-xs font-medium">
                       GST (%)
@@ -1027,12 +1138,6 @@ const BillingForm = ({ onBillingComplete }) => {
                     </div>
                   )}
                 </div>
-
-                {item.original_selling_rate && (
-                  <div className="text-xs text-gray-500 mt-2">
-                    Original Rate: ₹{parseFloat(item.original_selling_rate).toFixed(2)}
-                  </div>
-                )}
               </div>
             );
           })}
@@ -1048,11 +1153,11 @@ const BillingForm = ({ onBillingComplete }) => {
       {/* Info Box */}
       <div className="alert alert-info mb-6">
         <strong>How it works:</strong><br />
-        ✓ Selling Rate auto-populated from batch (can be edited per bill)<br />
-        ✓ Edited rates shown with EDITED label<br />
-        ✓ Quantity deducted from selected batch<br />
-        ✓ Billing total = Quantity × Final Selling Rate<br />
-        ✓ Cost Price is internal only (not shown in invoices)
+        ✓ Set a Global Discount % — applies to all new items automatically<br />
+        ✓ Override discount per item — that item is protected from global changes<br />
+        ✓ Selling Price = MRP × (1 − Discount%)<br />
+        ✓ MRP and Selling Price are calculated — not entered manually<br />
+        ✓ Quantity deducted from selected batch on save
       </div>
 
       {/* Summary */}
@@ -1091,7 +1196,7 @@ const BillingForm = ({ onBillingComplete }) => {
         {isEditMode && (
           <button
             type="button"
-            onClick={() => navigate(`/billing/invoices/${invoiceId}`)}
+            onClick={() => navigate(`/billing/invoices/${invoiceId}`, { replace: true })}
             className="btn-secondary"
           >
             Cancel

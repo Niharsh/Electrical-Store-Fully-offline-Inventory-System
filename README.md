@@ -450,7 +450,7 @@ For questions, issues, or feature requests:
 
 ## 🛠 Features overview
 
-- **Offline-first billing & inventory** tailored for single medical shops
+- **Offline-first billing & inventory** tailored for single Electrical shops
 - Batch-based quantity tracking with expiry alerts
 - Invoice creation, printing (thermal/A4) with tax calculations
 - Purchase entry form with automatic stock updates

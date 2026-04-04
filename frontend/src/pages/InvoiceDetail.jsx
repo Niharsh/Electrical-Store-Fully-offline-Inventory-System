@@ -73,7 +73,7 @@ const InvoiceDetail = () => {
   if (!invoice) return <ErrorAlert error="Invoice not found" />;
 
   const shopData = shop || {
-    shop_name: 'Medical Store',
+    shop_name: 'Electrical Store',
     address: 'Not configured',
     phone: 'N/A',
   };

@@ -7,7 +7,7 @@ import ProductAutocomplete from './ProductAutocomplete';
 
 const ProductList = ({ onEdit, onDelete }) => {
   const { products, loading, error, fetchProducts } = useProducts();
-  const { getProductPurchaseHistory, wholesalers } = useWholesalers();
+  const {  wholesalers } = useWholesalers();
   const [expandedBatches, setExpandedBatches] = useState({});
 
   // Initial fetch on component mount (runs ONLY once)
@@ -26,16 +26,6 @@ const ProductList = ({ onEdit, onDelete }) => {
   if (loading) return <LoadingSpinner />;
 
   // ✅ REMOVED: formatProductType() — no longer needed
-
-  // Format date for display
-  const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
 
   // Calculate total quantity from all batches
   const getTotalQuantity = (batches) => {
@@ -184,60 +174,28 @@ const ProductList = ({ onEdit, onDelete }) => {
                             <h4 className="font-semibold mb-4 text-gray-900">Batch Details</h4>
                             <div className="space-y-3">
                               {product.batches.map((batch, idx) => (
-                                <div
-                                  key={batch.id || `${product.id}-${batch.batch_number}`}
-                                  className="p-4 bg-white border-l-4 border-sky-600 rounded-lg"
-                                >
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex-1">
-                                      <div className="font-semibold text-gray-900">
-                                        {batch.batch_number}
-                                      </div>
-                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-sm text-gray-600">
-                                        <div><span className="font-medium">MRP:</span> ₹{parseFloat(batch.mrp).toFixed(2)}</div>
-                                        <div><span className="font-medium">Selling:</span> ₹{parseFloat(batch.selling_rate).toFixed(2)}</div>
-                                        <div><span className="font-medium">Cost:</span> ₹{parseFloat(batch.cost_price).toFixed(2)}</div>
-                                        <div><span className="font-medium">Qty:</span> {batch.quantity} {product.unit}</div>
-                                        {batch.expiry_date && (
-                                          <div><span className="font-medium">Expiry:</span> {formatDate(batch.expiry_date)}</div>
-                                        )}
-                                      </div>
-                                      {batch.wholesaler_id && (
-                                        <div className="text-sm text-purple-600 font-medium mt-3">
-                                          📦 Wholesaler: {wholesalers.find(w => w.id === batch.wholesaler_id)?.name || 'Unknown'}
-                                        </div>
-                                      )}
-                                      {batch.purchase_date && (
-                                        <div className="text-xs text-gray-500 mt-2">
-                                          Purchased: {formatDate(batch.purchase_date)}
-                                        </div>
-                                      )}
-                                      {/* Purchase History Section */}
-                                      {product.name && (
-                                        (() => {
-                                          const purchaseHistory = getProductPurchaseHistory(product.name);
-                                          return purchaseHistory && purchaseHistory.length > 0 ? (
-                                            <div className="mt-3 pt-3 border-t border-gray-200">
-                                              <div className="text-xs font-semibold text-gray-700 mb-2">
-                                                Purchase History from {wholesalers.find(w => w.id === batch.wholesaler_id)?.name || 'this wholesaler'}:
-                                              </div>
-                                              <div className="space-y-1">
-                                                {purchaseHistory
-                                                  .filter(h => h.wholesalerId === batch.wholesaler_id)
-                                                  .sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt))
-                                                  .map((record) => (
-                                                    <div key={record.id} className="text-xs text-gray-600">
-                                                      ₹{record.costPrice.toFixed(2)} on {formatDate(record.purchaseDate)}
-                                                    </div>
-                                                  ))}
-                                              </div>
-                                            </div>
-                                          ) : null;
-                                        })()
-                                      )}
-                                    </div>
+                              <div
+                                key={batch.id || `${product.id}-${idx}`}
+                                className="p-4 bg-white border-l-4 border-sky-600 rounded-lg"
+                              >
+                                <div className="font-semibold text-gray-900 mb-2">
+                                  Batch {idx + 1}
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm text-gray-600">
+                                  <div>
+                                    <span className="font-medium">MRP:</span>{' '}
+                                    ₹{parseFloat(batch.mrp || 0).toFixed(2)}
+                                  </div>
+                                  <div>
+                                    <span className="font-medium">Qty:</span>{' '}
+                                    {batch.quantity} {product.unit}
+                                  </div>
+                                  <div>
+                                    <span className="font-medium">Wholesaler:</span>{' '}
+                                    {wholesalers.find(w => w.id === batch.wholesaler_id)?.name || '—'}
                                   </div>
                                 </div>
+                              </div>
                               ))}
                             </div>
                           </div>

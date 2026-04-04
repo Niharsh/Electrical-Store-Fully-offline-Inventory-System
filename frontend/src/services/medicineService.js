@@ -1,7 +1,7 @@
 import api from './api';
 
 /**
- * ⚠️ API SERVICE CONTRACTS - GENERIC MEDICAL STORE INVENTORY
+ * ⚠️ API SERVICE CONTRACTS - GENERIC Electrical STORE INVENTORY
  * 
  * This service defines the contract between frontend and backend for a flexible,
  * product-type-agnostic inventory system. Supports tablets, syrups, powders, 

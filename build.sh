@@ -1,5 +1,5 @@
 #!/bin/bash
-# 🎯 Production Build Script for Medical Store Inventory System
+# 🎯 Production Build Script for Electrical Store Inventory System
 # Builds frontend and prepares for Electron packaging
 
 set -e

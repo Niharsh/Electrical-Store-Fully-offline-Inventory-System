@@ -58,7 +58,7 @@ const ActivationPage = () => {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="text-4xl mb-3">🔐</div>
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">Choudhary Medical Store</h1>
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">Choudhary Electrical Store</h1>
           <p className="text-gray-600 text-sm">License Activation Required</p>
         </div>
 
@@ -120,7 +120,7 @@ const ActivationPage = () => {
         <div className="mt-6 pt-6 border-t border-gray-200">
           <p className="text-xs text-gray-500 text-center">
             Don't have a license key?{' '}
-            <a href="mailto:info@choudharymedical.com" className="text-blue-600 hover:underline">
+            <a href="mailto:info@choudharyelectrical.com" className="text-blue-600 hover:underline">
               Contact sales
             </a>
           </p>

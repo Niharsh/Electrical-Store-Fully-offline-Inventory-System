@@ -7,7 +7,7 @@ import PurchasesTable from '../components/SalesAndPurchases/PurchasesTable';
 import PurchasesForm from '../components/SalesAndPurchases/PurchasesForm';
 
 /**
- * Dashboard Page - Overview of medical store inventory and billing
+ * Dashboard Page - Overview of electrical store inventory and billing
  * 
  * Displays:
  * - Total products (all types: tablets, syrups, powders, creams, diapers, condoms, sachets)

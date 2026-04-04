@@ -1,10 +1,10 @@
 {
-  "name": "choudhary-medical-store",
+  "name": "ojashwai-Electrical-Store",
   "version": "1.0.0",
-  "description": "Desktop billing software for Choudhary Medical Store",
+  "description": "Desktop billing software for Ojashwai Electrical Store",
   "main": "electron/main.js",
   "homepage": "./",
-  "author": "Choudhary Medical Store",
+  "author": "Ojashwai Electrical Store",
   "license": "MIT",
   "scripts": {
     "dev": "concurrently \"cd frontend && npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
@@ -29,8 +29,8 @@
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.choudharymedical.billing",
-    "productName": "Choudhary Medical Store",
+    "appId": "com.ojashwai.electrical.billing",
+    "productName": "Ojashwai Electrical Store",
     "directories": {
       "output": "dist-electron"
     },
@@ -76,7 +76,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Choudhary Medical Store"
+      "shortcutName": "Ojashwai Electrical Store"
     },
     "portable": {
       "artifactName": "${productName}-${version}-portable.exe"

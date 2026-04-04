@@ -25,7 +25,7 @@ export const ShopDetailsProvider = ({ children }) => {
         // Map the database field names to shop object
         const settings = response.data;
         const shopData = {
-          shop_name: settings.shop_name || 'Medical Store',
+          shop_name: settings.shop_name || 'Electrical Store',
           owner_name: settings.owner_name || '',
           phone: settings.phone || '',
           address: settings.address || '',

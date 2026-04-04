@@ -108,7 +108,7 @@ const SignupPage = () => {
       <div className="w-full max-w-md">
         {/* Logo/Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">💊 Medical Shop</h1>
+          <h1 className="text-4xl font-bold text-white mb-2"> Electrical  Shop</h1>
           <p className="text-blue-100">Setup your shop account</p>
         </div>
 
@@ -149,7 +149,7 @@ const SignupPage = () => {
                 name="email"
                 value={formData.email}
                 onChange={handleChange}
-                placeholder="owner@medicalshop.com"
+                placeholder="owner@electricalshop.com"
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 ${
                   errors.email ? 'border-red-500' : 'border-gray-300'
                 }`}
@@ -250,7 +250,7 @@ const SignupPage = () => {
 
         {/* Footer */}
         <p className="text-center text-blue-100 text-sm mt-6">
-          Secure. Local. Offline-First Medical Billing
+          Secure. Local. Offline-First Electrical Billing
         </p>
       </div>
     </div>

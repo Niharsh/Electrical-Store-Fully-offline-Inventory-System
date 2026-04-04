@@ -1,8 +1,8 @@
-# Medical Store Inventory & Billing System - Frontend
+# Electrical Store Inventory & Billing System - Frontend
 
 **Status**: ✅ Production-ready Electron + React + SQLite desktop application
 
-A React application for managing medical store inventory and billing for any product type (tablets, syrups, powders, creams, diapers, condoms, sachets, etc.), built with **Vite**, **Tailwind CSS**, and **Electron IPC**. This frontend is fully integrated with the Electron desktop application and SQLite database.
+A React application for managing Electrical store inventory and billing for any product type (tablets, syrups, powders, creams, diapers, condoms, sachets, etc.), built with **Vite**, **Tailwind CSS**, and **Electron IPC**. This frontend is fully integrated with the Electron desktop application and SQLite database.
 
 ## ⚠️ Important: Frontend-Backend Separation
 

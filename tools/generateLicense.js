@@ -17,16 +17,16 @@ function generateLicenseKey(prefix = '') {
   return `${randomSegment()}-${randomSegment()}-${randomSegment()}-${randomSegment()}`;
 }
 
-console.log('=== Choudhary Medical Store - License Key Generator ===\n');
+console.log('=== Choudhary Electrical Store - License Key Generator ===\n');
 
 console.log('--- Standard Keys ---');
 for (let i = 1; i <= 5; i++) {
   console.log(`Key ${i}: ${generateLicenseKey()}`);
 }
 
-console.log('\n--- Medical Branded Keys ---');
+console.log('\n--- Electrical Branded Keys ---');
 for (let i = 1; i <= 5; i++) {
-  console.log(`Key ${i}: ${generateLicenseKey('MEDI')}`);
+  console.log(`Key ${i}: ${generateLicenseKey('ELEC')}`);
 }
 
 console.log('\n=== Instructions ===');
@@ -34,4 +34,4 @@ console.log('1. Open the app');
 console.log('2. Enter any key above in activation window');
 console.log('3. License valid for 1 YEAR from activation');
 console.log('\n=== Reset License ===');
-console.log('Delete: %APPDATA%\\choudhary-medical-store\\license.dat');
+console.log('Delete: %APPDATA%\\choudhary-electrical-store\\license.dat');

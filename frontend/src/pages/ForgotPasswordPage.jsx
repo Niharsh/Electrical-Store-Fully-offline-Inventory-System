@@ -154,7 +154,7 @@ const ForgotPasswordPage = () => {
 
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">💊 Medical Shop</h1>
+          <h1 className="text-4xl font-bold text-white mb-2"> Electrical Shop</h1>
           <p className="text-blue-100">Inventory Management System</p>
         </div>
 
@@ -392,7 +392,7 @@ const ForgotPasswordPage = () => {
 
         {/* Footer */}
         <p className="text-center text-blue-100 text-sm mt-6">
-          Secure. Local. Offline-First Medical Billing
+          Secure. Local. Offline-First Electrical Billing
         </p>
       </div>
     </div>

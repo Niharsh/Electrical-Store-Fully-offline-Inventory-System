@@ -8,7 +8,7 @@ const crypto = require('crypto');
 
 // Secret key - MUST be 32 bytes for AES-256
 // In production, this should be derived from app metadata or securely stored
-const SECRET_KEY = Buffer.from('choudhary-medical-store-license-key-2026@secure');
+const SECRET_KEY = Buffer.from('choudhary-electrical-store-license-key-2026@secure');
 const SECRET_KEY_HASH = crypto.createHash('sha256').update(SECRET_KEY).digest();
 
 /**

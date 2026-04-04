@@ -1,6 +1,6 @@
 # API Contracts & Specifications
 
-This document defines the expected API contracts for the Django REST Framework backend for a **Generic Medical Store Inventory System**. These are requirements the frontend expects the backend to fulfill. **No assumptions are made beyond what is explicitly documented here.**
+This document defines the expected API contracts for the Django REST Framework backend for a **Generic Electrical Store Inventory System**. These are requirements the frontend expects the backend to fulfill. **No assumptions are made beyond what is explicitly documented here.**
 
 Supports multiple product types: tablets, syrups, powders, creams, diapers, condoms, sachets, and more.
 
