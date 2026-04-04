@@ -1,0 +1,83 @@
+name: Build macOS DMG
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+
+    steps:
+      # ─────────────────────────────────────────
+      # 1. Check out the repository
+      # ─────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ─────────────────────────────────────────
+      # 2. Set up Node.js
+      # ─────────────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      # ─────────────────────────────────────────
+      # 3. Install ROOT dependencies
+      #    (electron, electron-builder, better-sqlite3)
+      # ─────────────────────────────────────────
+      - name: Install root dependencies
+        run: npm install
+
+      # ─────────────────────────────────────────
+      # 4. Install FRONTEND dependencies
+      #    (React, Vite, etc. live in frontend/)
+      # ─────────────────────────────────────────
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm install
+
+      # ─────────────────────────────────────────
+      # 5. Build the React/Vite frontend
+      #    Output goes to frontend/dist/
+      # ─────────────────────────────────────────
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+
+      # ─────────────────────────────────────────
+      # 6. Rebuild better-sqlite3 for Electron
+      #    CRITICAL — native module must match
+      #    the Electron version, not Node version
+      # ─────────────────────────────────────────
+      - name: Rebuild native modules for Electron
+        run: npx @electron/rebuild -f -w better-sqlite3
+
+      # ─────────────────────────────────────────
+      # 7. Build the .dmg with electron-builder
+      #    Builds both x64 and arm64
+      #    No code signing (no Apple account)
+      # ─────────────────────────────────────────
+      - name: Build macOS DMG
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"   # Skip code signing
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed by electron-builder
+        run: npx electron-builder --mac --x64 --arm64
+
+      # ─────────────────────────────────────────
+      # 8. Upload .dmg files as downloadable artifacts
+      #    Available for 7 days after the build
+      # ─────────────────────────────────────────
+      - name: Upload DMG artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ojashwai-mac-dmg
+          path: dist-electron/*.dmg
+          retention-days: 7
+          if-no-files-found: error  # Fail loudly if DMG wasn't created

@@ -16,6 +16,7 @@
     "electron-build": "npm run build && electron-builder -w",
     "dist": "npm run build && electron-builder",
     "dist:portable": "npm run build && electron-builder -p never",
+    "dist:mac": "npm run build && electron-builder --mac",
     "pack": "electron-builder --dir",
     "prestart": "npm run build",
     "postinstall": "electron-builder install-app-deps"
@@ -34,22 +35,17 @@
     "directories": {
       "output": "dist-electron"
     },
-    "icon": "unamed.ico",
     "asar": true,
     "extraResources": [
       {
         "from": "database",
         "to": "database",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
         "from": "frontend/dist",
         "to": "frontend/dist",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       }
     ],
     "asarUnpack": [
@@ -59,15 +55,11 @@
     ],
     "files": [
       "electron/**/*",
-      "unamed.ico",
       "package.json"
     ],
     "win": {
-      "icon": "unamed.ico",
-      "target": [
-        "nsis",
-        "portable"
-      ],
+      "icon": "build/icon.png",
+      "target": ["nsis", "portable"],
       "certificateFile": null,
       "certificatePassword": null
     },
@@ -80,6 +72,22 @@
     },
     "portable": {
       "artifactName": "${productName}-${version}-portable.exe"
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.business",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "Ojashwai Electrical Store",
+      "artifactName": "${productName}-${version}.dmg"
     }
   },
   "dependencies": {
