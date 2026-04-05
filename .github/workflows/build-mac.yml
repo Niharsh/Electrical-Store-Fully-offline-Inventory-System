@@ -125,8 +125,8 @@ jobs:
       - name: Generate checksums
         run: |
           cd dist-electron
-          sha256sum *.dmg > SHA256SUMS
-          md5sum *.dmg > MD5SUMS
+          shasum -a 256 *.dmg > SHA256SUMS
+          md5 -r *.dmg > MD5SUMS
           cat SHA256SUMS
           cat MD5SUMS
 
