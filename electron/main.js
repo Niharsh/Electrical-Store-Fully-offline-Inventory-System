@@ -1418,11 +1418,13 @@ app.on("window-all-closed", async () => {
     console.error('[auto-backup] Error during auto-backup:', err);
   }
 
-  if (process.platform !== "darwin") app.quit();
+  app.quit();
 });
 
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  if (BrowserWindow.getAllWindows().length === 0 && licenseValid) {
+    createWindow();
+  }
 });
 
 // App menu
