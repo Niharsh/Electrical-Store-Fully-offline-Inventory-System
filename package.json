@@ -79,15 +79,38 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": ["x64"]
         }
       ],
       "hardenedRuntime": false,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "signingIdentity": null,
+      "identity": null
     },
     "dmg": {
       "title": "Ojashwai Electrical Store",
-      "artifactName": "${productName}-${version}.dmg"
+      "artifactName": "${productName}-${version}.dmg",
+      "format": "UDRW",
+      "sign": false,
+      "window": {
+        "x": 100,
+        "y": 100,
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 130,
+          "y": 220,
+          "type": "file"
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
     }
   },
   "dependencies": {
