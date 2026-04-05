@@ -94,16 +94,28 @@ jobs:
           fi
           
           # Validate DMG header with hdiutil
-          echo "Validating DMG structure..."
+          echo "Validating DMG structure and checksums..."
           if hdiutil verify "$DMG_FILE"; then
-            echo "✓ DMG validation PASSED"
+            echo "✓ DMG validation PASSED - checksums verified"
           else
             echo "✗ DMG validation FAILED - image may be corrupted"
             exit 1
           fi
           
+          # Test mount (attach then detach without keeping mounted)
+          echo "Testing DMG mount..."
+          TEST_MOUNT=$(mktemp -d)
+          if hdiutil attach -readonly -mountpoint "$TEST_MOUNT" "$DMG_FILE"; then
+            echo "✓ DMG mount test PASSED"
+            hdiutil detach "$TEST_MOUNT"
+            rm -rf "$TEST_MOUNT"
+          else
+            echo "✗ DMG mount test FAILED"
+            exit 1
+          fi
+          
           # List contents for debugging
-          echo "DMG contents:"
+          echo "DMG structure information:"
           hdiutil imageinfo "$DMG_FILE"
 
       # ─────────────────────────────────────────

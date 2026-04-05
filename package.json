@@ -88,7 +88,7 @@
     "dmg": {
       "title": "Ojashwai Electrical Store",
       "artifactName": "${productName}-${version}.dmg",
-      "format": "UDRW",
+      "format": "UDZO",
       "sign": false,
       "window": {
         "x": 100,
