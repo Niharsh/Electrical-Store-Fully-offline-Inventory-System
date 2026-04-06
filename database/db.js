@@ -5,32 +5,35 @@
 // Note: better-sqlite3 is a native module and must be properly included in the Electron build process.
 // Make sure to install it with npm and configure electron-builder to include it in the final package.
 // In development, it should work out of the box. In production, ensure that the asar packaging does not break the native module loading.
-const path = require('path');
-const fs = require('fs');
-const { app } = require('electron');
+const path = require("path");
+const fs = require("fs");
+const { app } = require("electron");
 
 let Database;
 try {
   if (process.resourcesPath) {
     const unpackedPath = path.join(
       process.resourcesPath,
-      'app.asar.unpacked',
-      'node_modules',
-      'better-sqlite3'
+      "app.asar.unpacked",
+      "node_modules",
+      "better-sqlite3",
     );
     if (fs.existsSync(unpackedPath)) {
       Database = require(unpackedPath);
-      console.log('[db] Loaded better-sqlite3 from asar.unpacked:', unpackedPath);
+      console.log(
+        "[db] Loaded better-sqlite3 from asar.unpacked:",
+        unpackedPath,
+      );
     } else {
-      Database = require('better-sqlite3');
-      console.log('[db] Loaded better-sqlite3 from node_modules (fallback)');
+      Database = require("better-sqlite3");
+      console.log("[db] Loaded better-sqlite3 from node_modules (fallback)");
     }
   } else {
-    Database = require('better-sqlite3');
-    console.log('[db] Loaded better-sqlite3 from node_modules (dev)');
+    Database = require("better-sqlite3");
+    console.log("[db] Loaded better-sqlite3 from node_modules (dev)");
   }
 } catch (err) {
-  console.error('[db] Failed to load better-sqlite3:', err.message);
+  console.error("[db] Failed to load better-sqlite3:", err.message);
   throw err;
 }
 
@@ -62,20 +65,20 @@ function exec(sql) {
 async function initializeDatabase() {
   if (db) return db;
 
-  const dbPath = path.join(app.getPath('userData'), 'electrical_store.db');
-  console.log('[database] Initializing better-sqlite3 at:', dbPath);
+  const dbPath = path.join(app.getPath("userData"), "electrical_store.db");
+  console.log("[database] Initializing better-sqlite3 at:", dbPath);
 
   try {
     db = new Database(dbPath);
   } catch (err) {
-    console.error('[database] Failed to open database:', err);
+    console.error("[database] Failed to open database:", err);
     db = null;
     throw err;
   }
 
   // enable foreign key constraints
-  db.pragma('foreign_keys = ON');
-  console.log('[database] Foreign key constraints enabled');
+  db.pragma("foreign_keys = ON");
+  console.log("[database] Foreign key constraints enabled");
 
   // Create tables sequentially
   run(`
@@ -95,7 +98,7 @@ async function initializeDatabase() {
 
   // Check if batches table exists with old schema
   const batchesCheck = get(
-    "SELECT sql FROM sqlite_master WHERE type='table' AND name='batches'"
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='batches'",
   );
 
   if (!batchesCheck) {
@@ -117,11 +120,13 @@ async function initializeDatabase() {
         UNIQUE(product_id, batch_number)
       )
     `);
-  } else if (batchesCheck.sql.includes('batch_number TEXT NOT NULL UNIQUE')) {
-    console.log('[database] Migrating batches table to fix UNIQUE constraint...');
+  } else if (batchesCheck.sql.includes("batch_number TEXT NOT NULL UNIQUE")) {
+    console.log(
+      "[database] Migrating batches table to fix UNIQUE constraint...",
+    );
     // Migrate old schema - drop & recreate
     try {
-      run('DROP TABLE IF EXISTS batches');
+      run("DROP TABLE IF EXISTS batches");
       run(`
         CREATE TABLE batches (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -139,8 +144,9 @@ async function initializeDatabase() {
           UNIQUE(product_id, batch_number)
         )
       `);
-      console.log('[database] Schema migration completed')    } catch (err) {
-      console.warn('[database] Could not migrate schema:', err.message);
+      console.log("[database] Schema migration completed");
+    } catch (err) {
+      console.warn("[database] Could not migrate schema:", err.message);
     }
   }
 
@@ -176,19 +182,29 @@ async function initializeDatabase() {
   // Add missing columns if they don't exist (for existing databases)
   try {
     run(`ALTER TABLE shop_settings ADD COLUMN bank_holder TEXT;`);
-  } catch (e) { /* column may already exist */ }
+  } catch (e) {
+    /* column may already exist */
+  }
   try {
     run(`ALTER TABLE shop_settings ADD COLUMN bank_name TEXT;`);
-  } catch (e) { /* column may already exist */ }
+  } catch (e) {
+    /* column may already exist */
+  }
   try {
     run(`ALTER TABLE shop_settings ADD COLUMN bank_account TEXT;`);
-  } catch (e) { /* column may already exist */ }
+  } catch (e) {
+    /* column may already exist */
+  }
   try {
     run(`ALTER TABLE shop_settings ADD COLUMN bank_ifsc TEXT;`);
-  } catch (e) { /* column may already exist */ }
+  } catch (e) {
+    /* column may already exist */
+  }
   try {
     run(`ALTER TABLE shop_settings ADD COLUMN bank_qr_path TEXT;`);
-  } catch (e) { /* column may already exist */ }
+  } catch (e) {
+    /* column may already exist */
+  }
 
   run(`
     CREATE TABLE IF NOT EXISTS product_types (
@@ -213,69 +229,69 @@ async function initializeDatabase() {
 
   // Add product_name column to invoice_items if it doesn't exist
   try {
-    run('ALTER TABLE invoice_items ADD COLUMN product_name TEXT');
+    run("ALTER TABLE invoice_items ADD COLUMN product_name TEXT");
   } catch (err) {
     // Column likely already exists, ignore error
   }
 
   // Add expiry_date column to invoice_items if it doesn't exist
   try {
-    run('ALTER TABLE invoice_items ADD COLUMN expiry_date TEXT');
+    run("ALTER TABLE invoice_items ADD COLUMN expiry_date TEXT");
   } catch (err) {
     // Column likely already exists, ignore error
   }
 
   // Add new billing fields to invoices table for electrical shop (CHANGE 2-5)
   try {
-    run('ALTER TABLE invoices ADD COLUMN bill_to_gstin VARCHAR(20)');
+    run("ALTER TABLE invoices ADD COLUMN bill_to_gstin VARCHAR(20)");
   } catch (err) {
     // Column likely already exists, ignore error
   }
-  
+
   try {
-    run('ALTER TABLE invoices ADD COLUMN bill_to_state VARCHAR(100)');
+    run("ALTER TABLE invoices ADD COLUMN bill_to_state VARCHAR(100)");
   } catch (err) {
     // Column likely already exists, ignore error
   }
-  
+
   try {
-    run('ALTER TABLE invoices ADD COLUMN ship_same_as_bill BOOLEAN DEFAULT 1');
+    run("ALTER TABLE invoices ADD COLUMN ship_same_as_bill BOOLEAN DEFAULT 1");
   } catch (err) {
     // Column likely already exists, ignore error
   }
-  
+
   try {
-    run('ALTER TABLE invoices ADD COLUMN ship_to_name VARCHAR(255)');
+    run("ALTER TABLE invoices ADD COLUMN ship_to_name VARCHAR(255)");
   } catch (err) {
     // Column likely already exists, ignore error
   }
-  
+
   try {
-    run('ALTER TABLE invoices ADD COLUMN ship_to_address TEXT');
+    run("ALTER TABLE invoices ADD COLUMN ship_to_address TEXT");
   } catch (err) {
     // Column likely already exists, ignore error
   }
-  
+
   try {
-    run('ALTER TABLE invoices ADD COLUMN ship_to_gstin VARCHAR(20)');
+    run("ALTER TABLE invoices ADD COLUMN ship_to_gstin VARCHAR(20)");
   } catch (err) {
     // Column likely already exists, ignore error
   }
-  
+
   try {
-    run('ALTER TABLE invoices ADD COLUMN ship_to_state VARCHAR(100)');
+    run("ALTER TABLE invoices ADD COLUMN ship_to_state VARCHAR(100)");
   } catch (err) {
     // Column likely already exists, ignore error
   }
-  
+
   try {
-    run('ALTER TABLE invoices ADD COLUMN place_of_supply VARCHAR(100)');
+    run("ALTER TABLE invoices ADD COLUMN place_of_supply VARCHAR(100)");
   } catch (err) {
     // Column likely already exists, ignore error
   }
-  
+
   try {
-    run('ALTER TABLE invoices ADD COLUMN eway_bill_no VARCHAR(50)');
+    run("ALTER TABLE invoices ADD COLUMN eway_bill_no VARCHAR(50)");
   } catch (err) {
     // Column likely already exists, ignore error
   }
@@ -331,46 +347,48 @@ async function initializeDatabase() {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (customer_id) REFERENCES customers(id)
     );
-` );
+`);
 
-    // Add customer_id column to invoices if it doesn't exist (for existing databases)
-    try {
-    run('ALTER TABLE invoices ADD COLUMN customer_id INTEGER REFERENCES customers(id)');
+  // Add customer_id column to invoices if it doesn't exist (for existing databases)
+  try {
+    run(
+      "ALTER TABLE invoices ADD COLUMN customer_id INTEGER REFERENCES customers(id)",
+    );
   } catch (err) {
     // Column likely already exists, ignore error
   }
 
   // Add invoice_number column to invoices if it doesn't exist (for existing databases)
   try {
-    run('ALTER TABLE invoices ADD COLUMN invoice_number TEXT');
+    run("ALTER TABLE invoices ADD COLUMN invoice_number TEXT");
   } catch (err) {
     // Column likely already exists, ignore error
   }
-    // Add tax_type column to invoices (for IGST vs CGST+SGST selection)
+  // Add tax_type column to invoices (for IGST vs CGST+SGST selection)
   try {
     run("ALTER TABLE invoices ADD COLUMN tax_type TEXT DEFAULT 'gst'");
-    console.log('[database] Added tax_type column to invoices');
+    console.log("[database] Added tax_type column to invoices");
   } catch (err) {
     // Column already exists — ignore
   }
 
   // Add bill_to_name column to invoices
   try {
-    run('ALTER TABLE invoices ADD COLUMN bill_to_name TEXT');
+    run("ALTER TABLE invoices ADD COLUMN bill_to_name TEXT");
   } catch (err) {
     // Column already exists — ignore
   }
 
   // Add bill_to_phone column to invoices
   try {
-    run('ALTER TABLE invoices ADD COLUMN bill_to_phone TEXT');
+    run("ALTER TABLE invoices ADD COLUMN bill_to_phone TEXT");
   } catch (err) {
     // Column already exists — ignore
   }
 
   // Add ship_to_phone column to invoices
   try {
-    run('ALTER TABLE invoices ADD COLUMN ship_to_phone TEXT');
+    run("ALTER TABLE invoices ADD COLUMN ship_to_phone TEXT");
   } catch (err) {
     // Column already exists — ignore
   }
@@ -429,7 +447,7 @@ async function initializeDatabase() {
     );
   `);
 
-  console.log('[database] Database initialized successfully (better-sqlite3)');
+  console.log("[database] Database initialized successfully (better-sqlite3)");
   return db;
 }
 
@@ -444,8 +462,8 @@ async function addProduct(productData) {
 
   try {
     // Start transaction
-    exec('BEGIN TRANSACTION');
-    
+    exec("BEGIN TRANSACTION");
+
     const insertSql = `
       INSERT INTO products (
         name, product_type, hsn, manufacturer, 
@@ -455,11 +473,11 @@ async function addProduct(productData) {
 
     const res = run(insertSql, [
       productData.name,
-      productData.product_type || 'general',
+      productData.product_type || "general",
       productData.hsn || null,
       productData.manufacturer || null,
       productData.min_stock_level ?? 10,
-      productData.unit || 'PCS',
+      productData.unit || "PCS",
       productData.description || null,
     ]);
 
@@ -510,7 +528,7 @@ async function addProduct(productData) {
     }
 
     // Fetch the complete product from database
-    const product = get('SELECT * FROM products WHERE id = ?', [productId]);
+    const product = get("SELECT * FROM products WHERE id = ?", [productId]);
     if (!product) {
       throw new Error(`Failed to fetch product ${productId} after insert`);
     }
@@ -518,22 +536,25 @@ async function addProduct(productData) {
     // Fetch GST rate from HSN
     let gstRate = null;
     if (product.hsn) {
-      const hsnData = get('SELECT gst_rate FROM hsn_codes WHERE hsn_code = ?', [product.hsn]);
+      const hsnData = get("SELECT gst_rate FROM hsn_codes WHERE hsn_code = ?", [
+        product.hsn,
+      ]);
       if (hsnData) {
         gstRate = hsnData.gst_rate;
       }
     }
 
     // Commit transaction
-    exec('COMMIT');
-    
-    console.log(`[db] addProduct: SUCCESS - Product ${productId} with ${savedBatches.length} batches`);
+    exec("COMMIT");
+
+    console.log(
+      `[db] addProduct: SUCCESS - Product ${productId} with ${savedBatches.length} batches`,
+    );
     return { ...product, batches: savedBatches, gst_rate: gstRate };
-    
   } catch (err) {
     console.error(`[db] addProduct: ERROR - Rolling back:`, err.message);
     try {
-      exec('ROLLBACK');
+      exec("ROLLBACK");
     } catch (rollbackErr) {
       console.error(`[db] addProduct: ROLLBACK failed:`, rollbackErr.message);
     }
@@ -543,14 +564,15 @@ async function addProduct(productData) {
 
 async function getProducts() {
   await getDatabase();
-  const products = all('SELECT * FROM products ORDER BY created_at DESC');
-  const getBatchesSql ="SELECT * FROM batches WHERE product_id = ? ORDER BY created_at ASC";
-  const getHSNSql = 'SELECT gst_rate FROM hsn_codes WHERE hsn_code = ?';
+  const products = all("SELECT * FROM products ORDER BY created_at DESC");
+  const getBatchesSql =
+    "SELECT * FROM batches WHERE product_id = ? ORDER BY created_at ASC";
+  const getHSNSql = "SELECT gst_rate FROM hsn_codes WHERE hsn_code = ?";
 
   const result = [];
   for (const p of products) {
     const batches = all(getBatchesSql, [p.id]);
-    
+
     // Fetch GST rate from HSN codes if product has HSN
     let gstRate = null;
     if (p.hsn) {
@@ -559,7 +581,7 @@ async function getProducts() {
         gstRate = hsnData.gst_rate;
       }
     }
-    
+
     const resultItem = { ...p, batches, gst_rate: gstRate };
     result.push(resultItem);
   }
@@ -569,19 +591,21 @@ async function getProducts() {
 
 async function getProductById(id) {
   await getDatabase();
-  const product = get('SELECT * FROM products WHERE id = ?', [id]);
+  const product = get("SELECT * FROM products WHERE id = ?", [id]);
   if (!product) return null;
-  const batches = all('SELECT * FROM batches WHERE product_id = ?', [id]);
-  
+  const batches = all("SELECT * FROM batches WHERE product_id = ?", [id]);
+
   // Fetch GST rate from HSN codes if product has HSN
   let gstRate = null;
   if (product.hsn) {
-    const hsnData = get('SELECT gst_rate FROM hsn_codes WHERE hsn_code = ?', [product.hsn]);
+    const hsnData = get("SELECT gst_rate FROM hsn_codes WHERE hsn_code = ?", [
+      product.hsn,
+    ]);
     if (hsnData) {
       gstRate = hsnData.gst_rate;
     }
   }
-  
+
   return { ...product, batches, gst_rate: gstRate };
 }
 async function searchProducts(query) {
@@ -664,44 +688,62 @@ async function searchProducts(query) {
 async function deleteProduct(id) {
   await getDatabase();
   try {
-    exec('BEGIN TRANSACTION');
+    exec("BEGIN TRANSACTION");
 
     // Step 1: Delete invoice_items linked directly to this product
     try {
-      run('DELETE FROM invoice_items WHERE product_id = ?', [id]);
+      run("DELETE FROM invoice_items WHERE product_id = ?", [id]);
     } catch (e) {
-      console.warn('[db] deleteProduct: invoice_items table missing or no direct product items', e.message);
+      console.warn(
+        "[db] deleteProduct: invoice_items table missing or no direct product items",
+        e.message,
+      );
     }
 
     // Step 2: Delete invoice_items linked to batch numbers associated with this product
     try {
-      const batches = all('SELECT id, batch_number FROM batches WHERE product_id = ?', [id]);
+      const batches = all(
+        "SELECT id, batch_number FROM batches WHERE product_id = ?",
+        [id],
+      );
       for (const batch of batches) {
-        run('DELETE FROM invoice_items WHERE batch_number = ? AND product_id = ?', [batch.batch_number, id]);
+        run(
+          "DELETE FROM invoice_items WHERE batch_number = ? AND product_id = ?",
+          [batch.batch_number, id],
+        );
       }
     } catch (e) {
-      console.warn('[db] deleteProduct: failed to delete invoice_items by batch references', e.message);
+      console.warn(
+        "[db] deleteProduct: failed to delete invoice_items by batch references",
+        e.message,
+      );
     }
 
     // Step 3: Delete batches for this product
     try {
-      run('DELETE FROM batches WHERE product_id = ?', [id]);
+      run("DELETE FROM batches WHERE product_id = ?", [id]);
     } catch (e) {
-      console.warn('[db] deleteProduct: batches table missing or no batches for product', e.message);
+      console.warn(
+        "[db] deleteProduct: batches table missing or no batches for product",
+        e.message,
+      );
     }
 
     // Step 4: Delete product
-    const result = run('DELETE FROM products WHERE id = ?', [id]);
+    const result = run("DELETE FROM products WHERE id = ?", [id]);
 
-    exec('COMMIT');
+    exec("COMMIT");
     console.log(`[db] deleteProduct: SUCCESS - Product ${id} deleted`);
     return result;
   } catch (err) {
     console.error(`[db] deleteProduct: ERROR - Rolling back:`, err.message);
     try {
-      exec('ROLLBACK');
+      exec("ROLLBACK");
     } catch (rollbackErr) {
-      console.error(`[db] deleteProduct: ROLLBACK failed:`, rollbackErr.message);
+      console.error(
+        `[db] deleteProduct: ROLLBACK failed:`,
+        rollbackErr.message,
+      );
     }
     throw err;
   }
@@ -711,38 +753,40 @@ async function updateProduct(id, productData) {
 
   try {
     // Verify product exists before updating
-    const existingProduct = get('SELECT * FROM products WHERE id = ?', [id]);
+    const existingProduct = get("SELECT * FROM products WHERE id = ?", [id]);
     if (!existingProduct) {
       throw new Error(`Product ${id} not found`);
     }
 
     // Start transaction
-    exec('BEGIN TRANSACTION');
+    exec("BEGIN TRANSACTION");
 
     const fields = [
-      'name',
-      'product_type',
-      'hsn',
-      'manufacturer',
-      'min_stock_level',
-      'unit',
-      'description',
+      "name",
+      "product_type",
+      "hsn",
+      "manufacturer",
+      "min_stock_level",
+      "unit",
+      "description",
     ];
 
-    const setClause = fields.map(f => `${f} = ?`).join(', ');
+    const setClause = fields.map((f) => `${f} = ?`).join(", ");
 
     // ✅ FIXED: for product_type, always use existing DB value as fallback
     // so NOT NULL is never violated even though UI stopped sending it
-    const values = fields.map(f => {
-      if (f === 'product_type') {
-        return productData.product_type || existingProduct.product_type || 'general';
+    const values = fields.map((f) => {
+      if (f === "product_type") {
+        return (
+          productData.product_type || existingProduct.product_type || "general"
+        );
       }
       return productData[f] ?? null;
     });
 
     run(
       `UPDATE products SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-      [...values, id]
+      [...values, id],
     );
 
     // Handle batch updates with transaction safety
@@ -816,17 +860,19 @@ async function updateProduct(id, productData) {
       }
     }
 
-    exec('COMMIT');
+    exec("COMMIT");
 
     console.log(`[db] updateProduct: SUCCESS - Product ${id} updated`);
     return getProductById(id);
-
   } catch (err) {
     console.error(`[db] updateProduct: ERROR - Rolling back:`, err.message);
     try {
-      exec('ROLLBACK');
+      exec("ROLLBACK");
     } catch (rollbackErr) {
-      console.error(`[db] updateProduct: ROLLBACK failed:`, rollbackErr.message);
+      console.error(
+        `[db] updateProduct: ROLLBACK failed:`,
+        rollbackErr.message,
+      );
     }
     throw err;
   }
@@ -835,11 +881,14 @@ async function updateProduct(id, productData) {
 async function addWholesaler(wholesalerData) {
   await getDatabase();
   try {
-    const res = run('INSERT INTO wholesalers (name, contactNumber, gstNumber) VALUES (?, ?, ?)', [
-      wholesalerData.name,
-      wholesalerData.contactNumber || null,
-      wholesalerData.gstNumber || null,
-    ]);
+    const res = run(
+      "INSERT INTO wholesalers (name, contactNumber, gstNumber) VALUES (?, ?, ?)",
+      [
+        wholesalerData.name,
+        wholesalerData.contactNumber || null,
+        wholesalerData.gstNumber || null,
+      ],
+    );
     return { id: res.lastID, ...wholesalerData };
   } catch (err) {
     // Rethrow for caller to handle
@@ -849,43 +898,46 @@ async function addWholesaler(wholesalerData) {
 
 async function getWholesalers() {
   await getDatabase();
-  return all('SELECT * FROM wholesalers ORDER BY name ASC');
+  return all("SELECT * FROM wholesalers ORDER BY name ASC");
 }
 
 async function getWholesalerById(id) {
   await getDatabase();
-  return get('SELECT * FROM wholesalers WHERE id = ?', [id]);
+  return get("SELECT * FROM wholesalers WHERE id = ?", [id]);
 }
 
 async function updateWholesaler(id, wholesalerData) {
   await getDatabase();
-  run('UPDATE wholesalers SET name = ?, contactNumber = ?, gstNumber = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [
-    wholesalerData.name,
-    wholesalerData.contactNumber || null,
-    wholesalerData.gstNumber || null,
-    id,
-  ]);
+  run(
+    "UPDATE wholesalers SET name = ?, contactNumber = ?, gstNumber = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    [
+      wholesalerData.name,
+      wholesalerData.contactNumber || null,
+      wholesalerData.gstNumber || null,
+      id,
+    ],
+  );
   return getWholesalerById(id);
 }
 
 async function deleteWholesaler(id) {
   await getDatabase();
-  run('DELETE FROM wholesalers WHERE id = ?', [id]);
+  run("DELETE FROM wholesalers WHERE id = ?", [id]);
 }
 
 // Shop Settings functions
 async function getSettings() {
   await getDatabase();
   // Always return the first row (single shop config model)
-  const row = get('SELECT * FROM shop_settings LIMIT 1', []);
+  const row = get("SELECT * FROM shop_settings LIMIT 1", []);
   if (!row) {
     // Return default empty object if no row exists
     return {
-      shop_name: '',
-      owner_name: '',
-      phone: '',
-      address: '',
-      gst_number: '',
+      shop_name: "",
+      owner_name: "",
+      phone: "",
+      address: "",
+      gst_number: "",
     };
   }
   return row;
@@ -894,47 +946,53 @@ async function getSettings() {
 async function saveSettings(settingsData) {
   await getDatabase();
   // Check if a row already exists
-  const existing = get('SELECT id FROM shop_settings LIMIT 1', []);
-  
+  const existing = get("SELECT id FROM shop_settings LIMIT 1", []);
+
   if (existing) {
     // Update existing row
-    run(`
+    run(
+      `
       UPDATE shop_settings 
       SET shop_name = ?, owner_name = ?, phone = ?, address = ?, gst_number = ?, 
           bank_holder = ?, bank_name = ?, bank_account = ?, bank_ifsc = ?, bank_qr_path = ?, 
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `, [
-      settingsData.shop_name || '',
-      settingsData.owner_name || '',
-      settingsData.phone || '',
-      settingsData.address || '',
-      settingsData.gst_number || '',
-      settingsData.bank_holder || '',
-      settingsData.bank_name || '',
-      settingsData.bank_account || '',
-      settingsData.bank_ifsc || '',
-      settingsData.bank_qr_path || '',
-      existing.id
-    ]);
+    `,
+      [
+        settingsData.shop_name || "",
+        settingsData.owner_name || "",
+        settingsData.phone || "",
+        settingsData.address || "",
+        settingsData.gst_number || "",
+        settingsData.bank_holder || "",
+        settingsData.bank_name || "",
+        settingsData.bank_account || "",
+        settingsData.bank_ifsc || "",
+        settingsData.bank_qr_path || "",
+        existing.id,
+      ],
+    );
     return getSettings();
   } else {
     // Insert new row
-    const res = run(`
+    const res = run(
+      `
       INSERT INTO shop_settings (shop_name, owner_name, phone, address, gst_number, bank_holder, bank_name, bank_account, bank_ifsc, bank_qr_path)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      settingsData.shop_name || '',
-      settingsData.owner_name || '',
-      settingsData.phone || '',
-      settingsData.address || '',
-      settingsData.gst_number || '',
-      settingsData.bank_holder || '',
-      settingsData.bank_name || '',
-      settingsData.bank_account || '',
-      settingsData.bank_ifsc || '',
-      settingsData.bank_qr_path || ''
-    ]);
+    `,
+      [
+        settingsData.shop_name || "",
+        settingsData.owner_name || "",
+        settingsData.phone || "",
+        settingsData.address || "",
+        settingsData.gst_number || "",
+        settingsData.bank_holder || "",
+        settingsData.bank_name || "",
+        settingsData.bank_account || "",
+        settingsData.bank_ifsc || "",
+        settingsData.bank_qr_path || "",
+      ],
+    );
     return getSettings();
   }
 }
@@ -943,12 +1001,19 @@ async function saveSettings(settingsData) {
 async function addProductType(typeData) {
   await getDatabase();
   try {
-    const res = run('INSERT INTO product_types (id, label, is_default) VALUES (?, ?, ?)', [
-      typeData.name || typeData.id,
-      typeData.label,
-      0 // custom types are never defaults
-    ]);
-    return { id: typeData.name || typeData.id, label: typeData.label, is_default: false };
+    const res = run(
+      "INSERT INTO product_types (id, label, is_default) VALUES (?, ?, ?)",
+      [
+        typeData.name || typeData.id,
+        typeData.label,
+        0, // custom types are never defaults
+      ],
+    );
+    return {
+      id: typeData.name || typeData.id,
+      label: typeData.label,
+      is_default: false,
+    };
   } catch (err) {
     throw err;
   }
@@ -956,17 +1021,20 @@ async function addProductType(typeData) {
 
 async function getProductTypes() {
   await getDatabase();
-  return all('SELECT * FROM product_types ORDER BY is_default DESC, id ASC', []);
+  return all(
+    "SELECT * FROM product_types ORDER BY is_default DESC, id ASC",
+    [],
+  );
 }
 
 async function deleteProductType(typeId) {
   await getDatabase();
   // Never allow deleting defaults (check in frontend too)
-  const type = get('SELECT * FROM product_types WHERE id = ?', [typeId]);
+  const type = get("SELECT * FROM product_types WHERE id = ?", [typeId]);
   if (type && type.is_default) {
-    throw new Error('Cannot delete default product types');
+    throw new Error("Cannot delete default product types");
   }
-  run('DELETE FROM product_types WHERE id = ?', [typeId]);
+  run("DELETE FROM product_types WHERE id = ?", [typeId]);
 }
 
 // HSN Code functions
@@ -974,15 +1042,20 @@ async function addHSNCode(hsnData) {
   await getDatabase();
   try {
     const res = run(
-      'INSERT INTO hsn_codes (hsn_code, description, gst_rate, is_active) VALUES (?, ?, ?, ?)',
+      "INSERT INTO hsn_codes (hsn_code, description, gst_rate, is_active) VALUES (?, ?, ?, ?)",
       [
         hsnData.hsn_code,
-        hsnData.description || '',
+        hsnData.description || "",
         hsnData.gst_rate,
-        hsnData.is_active !== undefined ? (hsnData.is_active ? 1 : 0) : 1
-      ]
+        hsnData.is_active !== undefined ? (hsnData.is_active ? 1 : 0) : 1,
+      ],
     );
-    return { hsn_code: hsnData.hsn_code, description: hsnData.description || '', gst_rate: hsnData.gst_rate, is_active: true };
+    return {
+      hsn_code: hsnData.hsn_code,
+      description: hsnData.description || "",
+      gst_rate: hsnData.gst_rate,
+      is_active: true,
+    };
   } catch (err) {
     throw err;
   }
@@ -990,30 +1063,26 @@ async function addHSNCode(hsnData) {
 
 async function getHSNCodes() {
   await getDatabase();
-  const rows = all('SELECT * FROM hsn_codes ORDER BY hsn_code ASC', []);
+  const rows = all("SELECT * FROM hsn_codes ORDER BY hsn_code ASC", []);
   // Convert is_active from 0/1 to boolean
-  return rows.map(row => ({ ...row, is_active: row.is_active === 1 }));
+  return rows.map((row) => ({ ...row, is_active: row.is_active === 1 }));
 }
 
 async function updateHSNCode(hsnCode, hsnData) {
   await getDatabase();
-  const is_active = hsnData.is_active !== undefined ? (hsnData.is_active ? 1 : 0) : 1;
+  const is_active =
+    hsnData.is_active !== undefined ? (hsnData.is_active ? 1 : 0) : 1;
   run(
-    'UPDATE hsn_codes SET description = ?, gst_rate = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE hsn_code = ?',
-    [
-      hsnData.description || '',
-      hsnData.gst_rate,
-      is_active,
-      hsnCode
-    ]
+    "UPDATE hsn_codes SET description = ?, gst_rate = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE hsn_code = ?",
+    [hsnData.description || "", hsnData.gst_rate, is_active, hsnCode],
   );
-  const updated = get('SELECT * FROM hsn_codes WHERE hsn_code = ?', [hsnCode]);
+  const updated = get("SELECT * FROM hsn_codes WHERE hsn_code = ?", [hsnCode]);
   return { ...updated, is_active: updated.is_active === 1 };
 }
 
 async function deleteHSNCode(hsnCode) {
   await getDatabase();
-  run('DELETE FROM hsn_codes WHERE hsn_code = ?', [hsnCode]);
+  run("DELETE FROM hsn_codes WHERE hsn_code = ?", [hsnCode]);
 }
 
 // ═════════════════════════════════════════════════════════════════
@@ -1023,7 +1092,7 @@ async function deleteHSNCode(hsnCode) {
 // Helper: Get financial year (April to March)
 function getFinancialYear() {
   const now = new Date();
-  const month = now.getMonth() + 1;  // 1 = Jan, 12 = Dec
+  const month = now.getMonth() + 1; // 1 = Jan, 12 = Dec
   const year = now.getFullYear();
   if (month >= 4) {
     // April or later → current financial year
@@ -1047,19 +1116,19 @@ function getNextInvoiceNumber() {
      WHERE invoice_number LIKE ?
      ORDER BY id DESC
      LIMIT 1`,
-    [`${prefix}%`]
+    [`${prefix}%`],
   );
 
   let nextNumber = 1;
   if (lastInvoice && lastInvoice.invoice_number) {
-    const parts = lastInvoice.invoice_number.split('/');
+    const parts = lastInvoice.invoice_number.split("/");
     const lastNum = parseInt(parts[parts.length - 1], 10);
     if (!isNaN(lastNum)) {
       nextNumber = lastNum + 1;
     }
   }
 
-  const padded = String(nextNumber).padStart(3, '0');
+  const padded = String(nextNumber).padStart(3, "0");
   return `${prefix}${padded}`;
 }
 
@@ -1136,25 +1205,25 @@ function createInvoice(invoiceData) {
         notes, discount_percent, tax_type, total_amount, customer_id
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        invoiceData.customer_name,          // 1
-        invoiceData.customer_phone   || '',  // 2
-        invoiceData.customer_address || '',  // 3
-        invoiceData.bill_to_gstin    || '',  // 4
-        invoiceData.bill_to_state    || '',  // 5
+        invoiceData.customer_name, // 1
+        invoiceData.customer_phone || "", // 2
+        invoiceData.customer_address || "", // 3
+        invoiceData.bill_to_gstin || "", // 4
+        invoiceData.bill_to_state || "", // 5
         invoiceData.ship_same_as_bill ? 1 : 0, // 6
-        invoiceData.ship_to_name     || '',  // 7
-        invoiceData.ship_to_address  || '',  // 8
-        invoiceData.ship_to_gstin    || '',  // 9
-        invoiceData.ship_to_state    || '',  // 10
-        invoiceData.place_of_supply  || '',  // 11
-        invoiceData.eway_bill_no     || '',  // 12
-        invoiceData.invoice_number   || null, // 13
-        invoiceData.notes            || '',  // 14
-        invoiceDiscountPercent,              // 15
-        invoiceData.tax_type         || 'gst', // 16
-        finalTotal,                          // 17
-        invoiceData.customer_id      || null, // 18
-      ]
+        invoiceData.ship_to_name || "", // 7
+        invoiceData.ship_to_address || "", // 8
+        invoiceData.ship_to_gstin || "", // 9
+        invoiceData.ship_to_state || "", // 10
+        invoiceData.place_of_supply || "", // 11
+        invoiceData.eway_bill_no || "", // 12
+        invoiceData.invoice_number || null, // 13
+        invoiceData.notes || "", // 14
+        invoiceDiscountPercent, // 15
+        invoiceData.tax_type || "gst", // 16
+        finalTotal, // 17
+        invoiceData.customer_id || null, // 18
+      ],
     );
 
     const invoiceId = invoiceRes.lastID;
@@ -1163,21 +1232,25 @@ function createInvoice(invoiceData) {
     const savedItems = [];
     for (const item of itemsWithSubtotals) {
       // Get product name to store with item
-      const product = get('SELECT name FROM products WHERE id = ?', [item.product_id]);
-      const productName = product ? String(product.name).trim() : ''; // Ensure it's a non-empty string, never "0"
-      
+      const product = get("SELECT name FROM products WHERE id = ?", [
+        item.product_id,
+      ]);
+      const productName = product ? String(product.name).trim() : ""; // Ensure it's a non-empty string, never "0"
+
       // Use expiry_date from form if provided, otherwise fetch from batch
       let expiryDate = item.expiry_date || null;
       if (!expiryDate) {
         const batch = get(
-          'SELECT expiry_date FROM batches WHERE product_id = ? AND batch_number = ?',
-          [item.product_id, item.batch_number]
+          "SELECT expiry_date FROM batches WHERE product_id = ? AND batch_number = ?",
+          [item.product_id, item.batch_number],
         );
         expiryDate = batch ? batch.expiry_date : null;
       }
-      
-      console.log(`[db] createInvoice: Adding item - Product: "${productName}", HSN: "${item.hsn_code}", Expiry: "${expiryDate}"`);
-      
+
+      console.log(
+        `[db] createInvoice: Adding item - Product: "${productName}", HSN: "${item.hsn_code}", Expiry: "${expiryDate}"`,
+      );
+
       const itemRes = run(
         `INSERT INTO invoice_items (
           invoice_id, product_id, product_name, batch_number, quantity,
@@ -1197,16 +1270,16 @@ function createInvoice(invoiceData) {
           item.discountPercent,
           item.gstPercent,
           item.is_return ? 1 : 0,
-          item.return_reason || '',
+          item.return_reason || "",
           item.subtotal,
           expiryDate || null,
-        ]
+        ],
       );
 
       // Deduct stock from batch
       run(
-        'UPDATE batches SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND batch_number = ?',
-        [item.quantity, item.product_id, item.batch_number]
+        "UPDATE batches SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND batch_number = ?",
+        [item.quantity, item.product_id, item.batch_number],
       );
 
       savedItems.push({
@@ -1224,10 +1297,7 @@ function createInvoice(invoiceData) {
 
 function getInvoices() {
   getDatabase();
-  const invoices = all(
-    'SELECT * FROM invoices ORDER BY created_at DESC',
-    []
-  );
+  const invoices = all("SELECT * FROM invoices ORDER BY created_at DESC", []);
 
   const result = [];
   for (const inv of invoices) {
@@ -1236,7 +1306,7 @@ function getInvoices() {
        FROM invoice_items ii
        LEFT JOIN products p ON ii.product_id = p.id
        WHERE ii.invoice_id = ?`,
-      [inv.id]
+      [inv.id],
     );
     result.push({ ...inv, items });
   }
@@ -1245,7 +1315,7 @@ function getInvoices() {
 
 function getInvoiceById(id) {
   getDatabase();
-  const invoice = get('SELECT * FROM invoices WHERE id = ?', [id]);
+  const invoice = get("SELECT * FROM invoices WHERE id = ?", [id]);
   if (!invoice) return null;
 
   const items = all(
@@ -1253,7 +1323,7 @@ function getInvoiceById(id) {
      FROM invoice_items ii
      LEFT JOIN products p ON ii.product_id = p.id
      WHERE ii.invoice_id = ?`,
-    [id]
+    [id],
   );
 
   return { ...invoice, items };
@@ -1271,16 +1341,16 @@ function deleteInvoice(id) {
   // Restore stock for all items
   for (const item of invoice.items) {
     run(
-      'UPDATE batches SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND batch_number = ?',
-      [item.quantity, item.product_id, item.batch_number]
+      "UPDATE batches SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ? AND batch_number = ?",
+      [item.quantity, item.product_id, item.batch_number],
     );
   }
 
   // Delete invoice items
-  run('DELETE FROM invoice_items WHERE invoice_id = ?', [id]);
+  run("DELETE FROM invoice_items WHERE invoice_id = ?", [id]);
 
   // Delete invoice
-  run('DELETE FROM invoices WHERE id = ?', [id]);
+  run("DELETE FROM invoices WHERE id = ?", [id]);
 }
 
 function updateInvoice(id, invoiceData) {
@@ -1293,7 +1363,7 @@ function updateInvoice(id, invoiceData) {
   }
 
   try {
-    exec('BEGIN TRANSACTION');
+    exec("BEGIN TRANSACTION");
 
     // ── Step 2: Restore stock for ALL old items ──
     for (const oldItem of existingInvoice.items) {
@@ -1304,16 +1374,21 @@ function updateInvoice(id, invoiceData) {
           `UPDATE batches 
            SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP 
            WHERE product_id = ? AND batch_number = ?`,
-          [oldItem.quantity, oldItem.product_id, oldItem.batch_number]
+          [oldItem.quantity, oldItem.product_id, oldItem.batch_number],
         );
-        console.log(`[db] updateInvoice: Restored ${oldItem.quantity} units to batch ${oldItem.batch_number}`);
+        console.log(
+          `[db] updateInvoice: Restored ${oldItem.quantity} units to batch ${oldItem.batch_number}`,
+        );
       } catch (restoreErr) {
-        console.warn(`[db] updateInvoice: Could not restore stock for batch ${oldItem.batch_number}:`, restoreErr.message);
+        console.warn(
+          `[db] updateInvoice: Could not restore stock for batch ${oldItem.batch_number}:`,
+          restoreErr.message,
+        );
       }
     }
 
     // ── Step 3: Delete all old invoice_items ──
-    run('DELETE FROM invoice_items WHERE invoice_id = ?', [id]);
+    run("DELETE FROM invoice_items WHERE invoice_id = ?", [id]);
 
     // ── Step 4: Recalculate totals from new items ──
     const items = invoiceData.items || [];
@@ -1321,38 +1396,32 @@ function updateInvoice(id, invoiceData) {
     const processedItems = [];
 
     for (const item of items) {
-      const quantity      = parseInt(item.quantity)             || 0;
-      const sellingRate   = parseFloat(item.selling_rate)       || 0;
-      const discountPct   = parseFloat(item.discount_percent)   || 0;
-      const gstPct        = parseFloat(item.gst_percent)        || 0;
+      const quantity = parseInt(item.quantity) || 0;
+      const sellingRate = parseFloat(item.selling_rate) || 0;
+      const discountPct = parseFloat(item.discount_percent) || 0;
+      const gstPct = parseFloat(item.gst_percent) || 0;
       const subtotal = quantity * sellingRate;
-      // selling_rate already post-discount — no discount applied again
-      const gstAmount = subtotal * (gstPct / 100);
 
-      totalAmount += subtotal + gstAmount;
-
-      // ── Step 5: Validate stock for new items ──
+      // ── Validate stock ──
       if (item.product_id && item.batch_number) {
         const batch = get(
-          'SELECT * FROM batches WHERE product_id = ? AND batch_number = ?',
-          [item.product_id, item.batch_number]
+          "SELECT * FROM batches WHERE product_id = ? AND batch_number = ?",
+          [item.product_id, item.batch_number],
         );
-
         if (!batch) {
           throw new Error(
-            `Batch "${item.batch_number}" not found for product ${item.product_id}`
+            `Batch "${item.batch_number}" not found for product ${item.product_id}`,
           );
         }
-
         if (batch.quantity < quantity) {
           throw new Error(
             `Insufficient stock: batch "${item.batch_number}" has ${batch.quantity} units, ` +
-            `but ${quantity} requested`
+              `but ${quantity} requested`,
           );
         }
       }
 
-      totalAmount += taxable + gstAmount;
+      totalAmount += subtotal;
 
       processedItems.push({
         ...item,
@@ -1363,6 +1432,14 @@ function updateInvoice(id, invoiceData) {
         subtotal,
       });
     }
+
+    // Calculate GST on taxable amount (matching createInvoice logic)
+    let totalGST = 0;
+    processedItems.forEach((item) => {
+      totalGST += (item.subtotal * item.gstPct) / 100;
+    });
+
+    const finalTotal = totalAmount + totalGST;
 
     // ── Step 6: Update invoice row ──
     run(
@@ -1391,37 +1468,39 @@ function updateInvoice(id, invoiceData) {
         updated_at        = CURRENT_TIMESTAMP
       WHERE id = ?`,
       [
-        invoiceData.customer_name     || '',
-        invoiceData.customer_phone    || '',
-        invoiceData.customer_address  || '',
-        invoiceData.bill_to_name      || '',
-        invoiceData.bill_to_phone     || '',
-        invoiceData.bill_to_gstin     || '',
-        invoiceData.bill_to_state     || '',
+        invoiceData.customer_name || "",
+        invoiceData.customer_phone || "",
+        invoiceData.customer_address || "",
+        invoiceData.bill_to_name || "",
+        invoiceData.bill_to_phone || "",
+        invoiceData.bill_to_gstin || "",
+        invoiceData.bill_to_state || "",
         invoiceData.ship_same_as_bill ? 1 : 0,
-        invoiceData.ship_to_name      || '',
-        invoiceData.ship_to_phone     || '',
-        invoiceData.ship_to_address   || '',
-        invoiceData.ship_to_gstin     || '',
-        invoiceData.ship_to_state     || '',
-        invoiceData.place_of_supply   || '',
-        invoiceData.eway_bill_no      || '',
-        invoiceData.invoice_number    || existingInvoice.invoice_number || '',
-        invoiceData.notes             || '',
+        invoiceData.ship_to_name || "",
+        invoiceData.ship_to_phone || "",
+        invoiceData.ship_to_address || "",
+        invoiceData.ship_to_gstin || "",
+        invoiceData.ship_to_state || "",
+        invoiceData.place_of_supply || "",
+        invoiceData.eway_bill_no || "",
+        invoiceData.invoice_number || existingInvoice.invoice_number || "",
+        invoiceData.notes || "",
         parseFloat(invoiceData.discount_percent) || 0,
-        invoiceData.tax_type          || 'gst',
-        invoiceData.total_amount      || totalAmount,
-        invoiceData.customer_id       || null,
+        invoiceData.tax_type || "gst",
+        invoiceData.total_amount || finalTotal,
+        invoiceData.customer_id || null,
         id,
-      ]
+      ],
     );
 
     // ── Step 7: Insert new items + deduct stock ──
     for (const item of processedItems) {
       // Get product name fresh from DB (same as createInvoice)
-      let productName = item.product_name || '';
+      let productName = item.product_name || "";
       if (item.product_id) {
-        const product = get('SELECT name FROM products WHERE id = ?', [item.product_id]);
+        const product = get("SELECT name FROM products WHERE id = ?", [
+          item.product_id,
+        ]);
         if (product) productName = String(product.name).trim();
       }
 
@@ -1429,8 +1508,8 @@ function updateInvoice(id, invoiceData) {
       let expiryDate = item.expiry_date || null;
       if (!expiryDate && item.product_id && item.batch_number) {
         const batch = get(
-          'SELECT expiry_date FROM batches WHERE product_id = ? AND batch_number = ?',
-          [item.product_id, item.batch_number]
+          "SELECT expiry_date FROM batches WHERE product_id = ? AND batch_number = ?",
+          [item.product_id, item.batch_number],
         );
         if (batch) expiryDate = batch.expiry_date || null;
       }
@@ -1444,21 +1523,21 @@ function updateInvoice(id, invoiceData) {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
-          item.product_id       || null,
+          item.product_id || null,
           productName,
-          item.batch_number     || null,
+          item.batch_number || null,
           item.quantity,
           item.original_selling_rate || item.sellingRate,
           item.sellingRate,
-          item.mrp              || null,
-          item.hsn_code         || null,
+          item.mrp || null,
+          item.hsn_code || null,
           item.discountPct,
           item.gstPct,
-          item.is_return        ? 1 : 0,
-          item.return_reason    || null,
+          item.is_return ? 1 : 0,
+          item.return_reason || null,
           item.subtotal,
           expiryDate,
-        ]
+        ],
       );
 
       // ── Deduct stock from batch ──
@@ -1467,22 +1546,23 @@ function updateInvoice(id, invoiceData) {
           `UPDATE batches 
            SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP 
            WHERE product_id = ? AND batch_number = ?`,
-          [item.quantity, item.product_id, item.batch_number]
+          [item.quantity, item.product_id, item.batch_number],
         );
-        console.log(`[db] updateInvoice: Deducted ${item.quantity} from batch ${item.batch_number}`);
+        console.log(
+          `[db] updateInvoice: Deducted ${item.quantity} from batch ${item.batch_number}`,
+        );
       }
     }
 
-    exec('COMMIT');
+    exec("COMMIT");
     console.log(`[db] updateInvoice: SUCCESS — Invoice ${id} fully updated`);
 
     // Return fresh complete invoice
     return getInvoiceById(id);
-
   } catch (err) {
     console.error(`[db] updateInvoice: ERROR — Rolling back:`, err.message);
     try {
-      exec('ROLLBACK');
+      exec("ROLLBACK");
     } catch (rbErr) {
       console.error(`[db] updateInvoice: ROLLBACK failed:`, rbErr.message);
     }
@@ -1496,12 +1576,12 @@ function getAllCustomers() {
   getDatabase();
   try {
     const customers = all(
-      'SELECT * FROM customers ORDER BY customer_name ASC',
-      []
+      "SELECT * FROM customers ORDER BY customer_name ASC",
+      [],
     );
     return customers || [];
   } catch (err) {
-    console.error('[db] getAllCustomers error:', err);
+    console.error("[db] getAllCustomers error:", err);
     throw err;
   }
 }
@@ -1509,13 +1589,10 @@ function getAllCustomers() {
 function getCustomerById(customerId) {
   getDatabase();
   try {
-    const customer = get(
-      'SELECT * FROM customers WHERE id = ?',
-      [customerId]
-    );
+    const customer = get("SELECT * FROM customers WHERE id = ?", [customerId]);
     return customer || null;
   } catch (err) {
-    console.error('[db] getCustomerById error:', err);
+    console.error("[db] getCustomerById error:", err);
     throw err;
   }
 }
@@ -1525,12 +1602,12 @@ function searchCustomers(searchTerm) {
   try {
     const term = `%${searchTerm}%`;
     const customers = all(
-      'SELECT * FROM customers WHERE customer_name LIKE ? OR phone_number LIKE ? ORDER BY customer_name ASC',
-      [term, term]
+      "SELECT * FROM customers WHERE customer_name LIKE ? OR phone_number LIKE ? ORDER BY customer_name ASC",
+      [term, term],
     );
     return customers || [];
   } catch (err) {
-    console.error('[db] searchCustomers error:', err);
+    console.error("[db] searchCustomers error:", err);
     throw err;
   }
 }
@@ -1548,13 +1625,13 @@ function saveOrUpdateCustomer(customerData) {
       ship_to_address,
       ship_to_gstin,
       ship_to_state,
-      discount
+      discount,
     } = customerData;
 
     // Check if customer with same name and phone already exists
     const existing = get(
-      'SELECT id FROM customers WHERE customer_name = ? AND phone_number = ?',
-      [customer_name, phone_number]
+      "SELECT id FROM customers WHERE customer_name = ? AND phone_number = ?",
+      [customer_name, phone_number],
     );
 
     if (existing) {
@@ -1574,8 +1651,8 @@ function saveOrUpdateCustomer(customerData) {
           ship_to_gstin || null,
           ship_to_state || null,
           parseFloat(discount) || 0,
-          existing.id
-        ]
+          existing.id,
+        ],
       );
       return getCustomerById(existing.id);
     } else {
@@ -1597,13 +1674,13 @@ function saveOrUpdateCustomer(customerData) {
           ship_to_address || null,
           ship_to_gstin || null,
           ship_to_state || null,
-          parseFloat(discount) || 0
-        ]
+          parseFloat(discount) || 0,
+        ],
       );
       return getCustomerById(res.lastID);
     }
   } catch (err) {
-    console.error('[db] saveOrUpdateCustomer error:', err);
+    console.error("[db] saveOrUpdateCustomer error:", err);
     throw err;
   }
 }
@@ -1621,7 +1698,7 @@ function updateCustomer(customerId, customerData) {
       ship_to_address,
       ship_to_gstin,
       ship_to_state,
-      discount
+      discount,
     } = customerData;
 
     run(
@@ -1642,12 +1719,12 @@ function updateCustomer(customerId, customerData) {
         ship_to_gstin || null,
         ship_to_state || null,
         parseFloat(discount) || 0,
-        customerId
-      ]
+        customerId,
+      ],
     );
     return getCustomerById(customerId);
   } catch (err) {
-    console.error('[db] updateCustomer error:', err);
+    console.error("[db] updateCustomer error:", err);
     throw err;
   }
 }
@@ -1658,11 +1735,11 @@ function getDashboardSummary() {
   getDatabase();
   try {
     // Total products count
-    const productsCount = get('SELECT COUNT(*) as count FROM products');
+    const productsCount = get("SELECT COUNT(*) as count FROM products");
     const totalProducts = productsCount?.count || 0;
 
     // Recent invoices count
-    const invoicesCount = get('SELECT COUNT(*) as count FROM invoices');
+    const invoicesCount = get("SELECT COUNT(*) as count FROM invoices");
     const recentInvoices = invoicesCount?.count || 0;
 
     return {
@@ -1673,7 +1750,7 @@ function getDashboardSummary() {
       },
     };
   } catch (error) {
-    console.error('[db] getDashboardSummary error:', error);
+    console.error("[db] getDashboardSummary error:", error);
     throw error;
   }
 }
@@ -1711,7 +1788,7 @@ function getLowStockItems() {
         units_below: unitsBelow,
         severity: severity,
       };
-    }); 
+    });
 
     return {
       success: true,
@@ -1721,20 +1798,20 @@ function getLowStockItems() {
       },
     };
   } catch (error) {
-    console.error('[db] getLowStockItems error:', error);
+    console.error("[db] getLowStockItems error:", error);
     throw error;
   }
 }
 
 // getExpiryOverview - REMOVED (not applicable to electric shop)
 
-function getSalesOverview(period = 'month') {
+function getSalesOverview(period = "month") {
   getDatabase();
   try {
-    let query = '';
+    let query = "";
     let params = [];
 
-    if (period === 'year') {
+    if (period === "year") {
       const currentYear = new Date().getFullYear();
       query = `
         SELECT 
@@ -1748,7 +1825,7 @@ function getSalesOverview(period = 'month') {
       // Default to month
       const today = new Date();
       const currentYear = today.getFullYear();
-      const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
+      const currentMonth = String(today.getMonth() + 1).padStart(2, "0");
       query = `
         SELECT 
           COALESCE(SUM(total_amount), 0) as total_sales,
@@ -1766,23 +1843,23 @@ function getSalesOverview(period = 'month') {
       data: {
         total_sales: result?.total_sales || 0,
         total_paid: 0, // TODO: Track payments separately if needed
-        total_due: 0,  // TODO: Track due amounts separately if needed
+        total_due: 0, // TODO: Track due amounts separately if needed
         bill_count: result?.bill_count || 0,
       },
     };
   } catch (error) {
-    console.error('[db] getSalesOverview error:', error);
+    console.error("[db] getSalesOverview error:", error);
     throw error;
   }
 }
 
-function getPurchaseOverview(period = 'month') {
+function getPurchaseOverview(period = "month") {
   getDatabase();
   try {
-    let query = '';
+    let query = "";
     let params = [];
 
-    if (period === 'year') {
+    if (period === "year") {
       const currentYear = new Date().getFullYear();
       query = `
         SELECT 
@@ -1798,7 +1875,7 @@ function getPurchaseOverview(period = 'month') {
       // Default to month
       const today = new Date();
       const currentYear = today.getFullYear();
-      const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
+      const currentMonth = String(today.getMonth() + 1).padStart(2, "0");
       query = `
         SELECT 
           COALESCE(SUM(total_amount), 0) as total_purchases,
@@ -1823,7 +1900,7 @@ function getPurchaseOverview(period = 'month') {
       },
     };
   } catch (error) {
-    console.error('[db] getPurchaseOverview error:', error);
+    console.error("[db] getPurchaseOverview error:", error);
     throw error;
   }
 }
@@ -1841,28 +1918,27 @@ function createPurchaseBill(billData) {
 
     // Handle wholesaler: look up by name or create if doesn't exist
     let wholesaler_id = billData.wholesaler_id;
-    
+
     if (!wholesaler_id && billData.wholesaler_name) {
       // Try to find existing wholesaler by name
-      const existing = get(
-        'SELECT id FROM wholesalers WHERE name = ?',
-        [billData.wholesaler_name]
-      );
-      
+      const existing = get("SELECT id FROM wholesalers WHERE name = ?", [
+        billData.wholesaler_name,
+      ]);
+
       if (existing) {
         wholesaler_id = existing.id;
       } else {
         // Create new wholesaler if it doesn't exist
         const result = run(
-          'INSERT INTO wholesalers (name, contactNumber, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
-          [billData.wholesaler_name, billData.contact_number || null]
+          "INSERT INTO wholesalers (name, contactNumber, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+          [billData.wholesaler_name, billData.contact_number || null],
         );
         wholesaler_id = result.lastID;
       }
     }
 
     if (!wholesaler_id) {
-      throw new Error('Wholesaler ID or name is required');
+      throw new Error("Wholesaler ID or name is required");
     }
 
     // Insert purchase bill
@@ -1878,9 +1954,13 @@ function createPurchaseBill(billData) {
         total_amount,
         amount_paid,
         amount_due,
-        amount_paid >= total_amount ? 'paid' : (amount_paid > 0 ? 'partial' : 'unpaid'),
+        amount_paid >= total_amount
+          ? "paid"
+          : amount_paid > 0
+            ? "partial"
+            : "unpaid",
         billData.notes || null,
-      ]
+      ],
     );
 
     // Fetch the created bill with wholesaler info
@@ -1892,24 +1972,24 @@ function createPurchaseBill(billData) {
       FROM purchase_bills pb
       LEFT JOIN wholesalers w ON pb.wholesaler_id = w.id
       WHERE pb.id = ?`,
-      [result.lastID]
+      [result.lastID],
     );
 
     // Ensure all numeric fields are properly converted
     return {
       id: bill.id,
-      bill_number: bill.bill_number || '',
-      purchase_date: bill.purchase_date || '',
-      wholesaler_name: bill.wholesaler_name || '',
-      wholesaler_contact: bill.wholesaler_contact || '',
+      bill_number: bill.bill_number || "",
+      purchase_date: bill.purchase_date || "",
+      wholesaler_name: bill.wholesaler_name || "",
+      wholesaler_contact: bill.wholesaler_contact || "",
       total_amount: parseFloat(bill.total_amount) || 0,
       amount_paid: parseFloat(bill.amount_paid) || 0,
       amount_due: parseFloat(bill.amount_due) || 0,
-      payment_status: bill.payment_status || 'unpaid',
-      notes: bill.notes || '',
+      payment_status: bill.payment_status || "unpaid",
+      notes: bill.notes || "",
     };
   } catch (error) {
-    console.error('[db] createPurchaseBill error:', error);
+    console.error("[db] createPurchaseBill error:", error);
     throw error;
   }
 }
@@ -1925,24 +2005,24 @@ function getPurchaseBills() {
         w.name as wholesaler_name, w.contactNumber as wholesaler_contact
       FROM purchase_bills pb
       LEFT JOIN wholesalers w ON pb.wholesaler_id = w.id
-      ORDER BY pb.created_at DESC`
+      ORDER BY pb.created_at DESC`,
     );
 
     // Ensure all numeric fields are properly converted
-    return (bills || []).map(bill => ({
+    return (bills || []).map((bill) => ({
       id: bill.id,
-      bill_number: bill.bill_number || '',
-      purchase_date: bill.purchase_date || '',
-      wholesaler_name: bill.wholesaler_name || '',
-      wholesaler_contact: bill.wholesaler_contact || '',
+      bill_number: bill.bill_number || "",
+      purchase_date: bill.purchase_date || "",
+      wholesaler_name: bill.wholesaler_name || "",
+      wholesaler_contact: bill.wholesaler_contact || "",
       total_amount: parseFloat(bill.total_amount) || 0,
       amount_paid: parseFloat(bill.amount_paid) || 0,
       amount_due: parseFloat(bill.amount_due) || 0,
-      payment_status: bill.payment_status || 'unpaid',
-      notes: bill.notes || '',
+      payment_status: bill.payment_status || "unpaid",
+      notes: bill.notes || "",
     }));
   } catch (error) {
-    console.error('[db] getPurchaseBills error:', error);
+    console.error("[db] getPurchaseBills error:", error);
     throw error;
   }
 }
@@ -1952,19 +2032,29 @@ function updatePurchaseBill(id, billData) {
 
   try {
     // Verify bill exists
-    const existingBill = get('SELECT id FROM purchase_bills WHERE id = ?', [id]);
+    const existingBill = get("SELECT id FROM purchase_bills WHERE id = ?", [
+      id,
+    ]);
     if (!existingBill) {
       throw new Error(`Purchase bill ${id} not found`);
     }
 
     // Parse numeric values
     const amount_paid = parseFloat(billData.amount_paid);
-    
+
     // Fetch current total_amount to calculate amount_due
-    const current = get('SELECT total_amount FROM purchase_bills WHERE id = ?', [id]);
+    const current = get(
+      "SELECT total_amount FROM purchase_bills WHERE id = ?",
+      [id],
+    );
     const total_amount = parseFloat(current.total_amount) || 0;
     const amount_due = total_amount - amount_paid;
-    const payment_status = amount_paid >= total_amount ? 'paid' : (amount_paid > 0 ? 'partial' : 'unpaid');
+    const payment_status =
+      amount_paid >= total_amount
+        ? "paid"
+        : amount_paid > 0
+          ? "partial"
+          : "unpaid";
 
     // Update purchase bill
     run(
@@ -1972,13 +2062,7 @@ function updatePurchaseBill(id, billData) {
         amount_paid = ?, amount_due = ?, payment_status = ?,
         notes = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
-      [
-        amount_paid,
-        amount_due,
-        payment_status,
-        billData.notes || null,
-        id,
-      ]
+      [amount_paid, amount_due, payment_status, billData.notes || null, id],
     );
 
     // Fetch and return updated bill with wholesaler info
@@ -1990,24 +2074,24 @@ function updatePurchaseBill(id, billData) {
       FROM purchase_bills pb
       LEFT JOIN wholesalers w ON pb.wholesaler_id = w.id
       WHERE pb.id = ?`,
-      [id]
+      [id],
     );
 
     // Ensure all numeric fields are properly converted
     return {
       id: bill.id,
-      bill_number: bill.bill_number || '',
-      purchase_date: bill.purchase_date || '',
-      wholesaler_name: bill.wholesaler_name || '',
-      wholesaler_contact: bill.wholesaler_contact || '',
+      bill_number: bill.bill_number || "",
+      purchase_date: bill.purchase_date || "",
+      wholesaler_name: bill.wholesaler_name || "",
+      wholesaler_contact: bill.wholesaler_contact || "",
       total_amount: parseFloat(bill.total_amount) || 0,
       amount_paid: parseFloat(bill.amount_paid) || 0,
       amount_due: parseFloat(bill.amount_due) || 0,
-      payment_status: bill.payment_status || 'unpaid',
-      notes: bill.notes || '',
+      payment_status: bill.payment_status || "unpaid",
+      notes: bill.notes || "",
     };
   } catch (error) {
-    console.error('[db] updatePurchaseBill error:', error);
+    console.error("[db] updatePurchaseBill error:", error);
     throw error;
   }
 }
@@ -2017,23 +2101,23 @@ function deletePurchaseBill(id) {
 
   try {
     // Verify bill exists
-    const bill = get('SELECT id FROM purchase_bills WHERE id = ?', [id]);
+    const bill = get("SELECT id FROM purchase_bills WHERE id = ?", [id]);
     if (!bill) {
       throw new Error(`Purchase bill ${id} not found`);
     }
 
     // Delete the purchase bill
-    run('DELETE FROM purchase_bills WHERE id = ?', [id]);
+    run("DELETE FROM purchase_bills WHERE id = ?", [id]);
 
     // Verify deletion
-    const deleted = get('SELECT id FROM purchase_bills WHERE id = ?', [id]);
+    const deleted = get("SELECT id FROM purchase_bills WHERE id = ?", [id]);
     if (deleted) {
       throw new Error(`Failed to delete purchase bill ${id}`);
     }
 
     return { success: true, id };
   } catch (error) {
-    console.error('[db] deletePurchaseBill error:', error);
+    console.error("[db] deletePurchaseBill error:", error);
     throw error;
   }
 }
@@ -2063,25 +2147,25 @@ function getRecentInvoices(limit = 10) {
       },
     };
   } catch (error) {
-    console.error('[db] getRecentInvoices error:', error);
+    console.error("[db] getRecentInvoices error:", error);
     throw error;
   }
 }
 
 // Authentication functions
-const crypto = require('crypto');
+const crypto = require("crypto");
 
 function hashPassword(password) {
-  return crypto.createHash('sha256').update(password).digest('hex');
+  return crypto.createHash("sha256").update(password).digest("hex");
 }
 
 function ownerExists() {
   getDatabase();
   try {
-    const owner = get('SELECT id FROM owners WHERE is_active = 1 LIMIT 1');
+    const owner = get("SELECT id FROM owners WHERE is_active = 1 LIMIT 1");
     return !!owner;
   } catch (error) {
-    console.error('[db] ownerExists error:', error);
+    console.error("[db] ownerExists error:", error);
     return false;
   }
 }
@@ -2090,8 +2174,8 @@ function verifyOwnerByUsername(username) {
   getDatabase();
   try {
     const owner = get(
-      'SELECT id, username, email, first_name, last_name FROM owners WHERE (username = ? OR email = ?) AND is_active = 1',
-      [username.toLowerCase(), username.toLowerCase()]
+      "SELECT id, username, email, first_name, last_name FROM owners WHERE (username = ? OR email = ?) AND is_active = 1",
+      [username.toLowerCase(), username.toLowerCase()],
     );
     if (!owner) {
       return null;
@@ -2104,7 +2188,7 @@ function verifyOwnerByUsername(username) {
       last_name: owner.last_name,
     };
   } catch (error) {
-    console.error('[db] verifyOwnerByUsername error:', error);
+    console.error("[db] verifyOwnerByUsername error:", error);
     return null;
   }
 }
@@ -2112,33 +2196,45 @@ function verifyOwnerByUsername(username) {
 function getOwner() {
   getDatabase();
   try {
-    const owner = get('SELECT * FROM owners WHERE is_active = 1 LIMIT 1');
+    const owner = get("SELECT * FROM owners WHERE is_active = 1 LIMIT 1");
     return owner || null;
   } catch (error) {
-    console.error('[db] getOwner error:', error);
+    console.error("[db] getOwner error:", error);
     return null;
   }
 }
 
-function registerOwner(username, email, password, firstName = '', lastName = '') {
+function registerOwner(
+  username,
+  email,
+  password,
+  firstName = "",
+  lastName = "",
+) {
   getDatabase();
   try {
     // Check if owner already exists
-    const existing = get('SELECT id FROM owners WHERE is_active = 1 LIMIT 1');
+    const existing = get("SELECT id FROM owners WHERE is_active = 1 LIMIT 1");
     if (existing) {
-      throw new Error('Owner account already exists');
+      throw new Error("Owner account already exists");
     }
 
     const passwordHash = hashPassword(password);
-    
+
     const result = run(
       `INSERT INTO owners (username, email, password_hash, first_name, last_name, is_active) 
        VALUES (?, ?, ?, ?, ?, 1)`,
-      [username.toLowerCase(), email.toLowerCase(), passwordHash, firstName, lastName]
+      [
+        username.toLowerCase(),
+        email.toLowerCase(),
+        passwordHash,
+        firstName,
+        lastName,
+      ],
     );
 
-    console.log('[db] Owner registered successfully');
-    
+    console.log("[db] Owner registered successfully");
+
     return {
       id: result.lastID,
       username: username.toLowerCase(),
@@ -2147,7 +2243,7 @@ function registerOwner(username, email, password, firstName = '', lastName = '')
       last_name: lastName,
     };
   } catch (error) {
-    console.error('[db] registerOwner error:', error);
+    console.error("[db] registerOwner error:", error);
     throw error;
   }
 }
@@ -2156,18 +2252,18 @@ function loginOwner(username, password) {
   getDatabase();
   try {
     const passwordHash = hashPassword(password);
-    
+
     const owner = get(
       `SELECT * FROM owners WHERE (username = ? OR email = ?) AND is_active = 1 AND password_hash = ?`,
-      [username.toLowerCase(), username.toLowerCase(), passwordHash]
+      [username.toLowerCase(), username.toLowerCase(), passwordHash],
     );
 
     if (!owner) {
-      throw new Error('Invalid credentials');
+      throw new Error("Invalid credentials");
     }
 
-    console.log('[db] Owner login successful:', owner.username);
-    
+    console.log("[db] Owner login successful:", owner.username);
+
     return {
       id: owner.id,
       username: owner.username,
@@ -2176,7 +2272,7 @@ function loginOwner(username, password) {
       last_name: owner.last_name,
     };
   } catch (error) {
-    console.error('[db] loginOwner error:', error);
+    console.error("[db] loginOwner error:", error);
     throw error;
   }
 }
