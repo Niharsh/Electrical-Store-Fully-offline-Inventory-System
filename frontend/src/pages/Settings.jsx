@@ -3,6 +3,7 @@ import { Database, CheckCircle, AlertCircle } from 'lucide-react';
 import { useProducts } from '../context/ProductContext';
 // ✅ REMOVED: import ProductTypeManager
 import HSNManager from '../components/Product/HSNManager';
+import HSNGSTReport from '../components/Settings/HSNGSTReport';
 import ErrorAlert from '../components/Common/ErrorAlert';
 import ShopDetails from "../components/Settings/ShopDetails";
 
@@ -154,6 +155,11 @@ const Settings = () => {
           onHSNDeleted={handleDeleteHSN}
           loading={loading}
         />
+      </div>
+
+      {/* ── NEW: HSN GST Report ── */}
+      <div className="card">
+        <HSNGSTReport />
       </div>
 
       {/* Database Management Section */}

@@ -4,6 +4,144 @@ import { useInvoices } from '../../context/InvoiceContext';
 import { useProducts } from '../../context/ProductContext';
 import ErrorAlert from '../Common/ErrorAlert';
 
+// Remark Box inline edit component
+const RemarkBox = ({ remark, onSave }) => {
+  const [editing,  setEditing]  = useState(false);
+  const [value,    setValue]    = useState(remark);
+  const [saving,   setSaving]   = useState(false);
+
+  useEffect(() => {
+    setValue(remark);
+    setEditing(false);
+  }, [remark]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(value);
+      setEditing(false);
+    } catch (err) {
+      console.error('RemarkBox save error:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{
+      marginBottom: '24px',
+      padding:      '14px 16px',
+      background:   '#fffbeb',
+      border:       '1px solid #f59e0b',
+      borderRadius: '8px',
+    }}>
+      <div style={{
+        display:      'flex',
+        alignItems:   'center',
+        gap:          '8px',
+        marginBottom: editing ? '10px' : '6px',
+      }}>
+        <span style={{ fontSize: '18px' }}>📋</span>
+        <span style={{
+          fontWeight: 700,
+          fontSize:   '13px',
+          color:      '#92400e',
+          flex:       1,
+        }}>
+          Customer Remark
+        </span>
+        {!editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            style={{
+              background:   'none',
+              border:       '1px solid #d97706',
+              borderRadius: '4px',
+              padding:      '2px 10px',
+              fontSize:     '12px',
+              color:        '#92400e',
+              cursor:       'pointer',
+            }}
+          >
+            ✏️ Edit
+          </button>
+        )}
+      </div>
+      {!editing && (
+        <div style={{
+          fontSize: '13px',
+          color:    '#78350f',
+          minHeight: '20px',
+        }}>
+          {remark
+            ? remark
+            : <span style={{ color: '#b45309', fontStyle: 'italic' }}>
+                No remark yet — click Edit to add one
+              </span>
+          }
+        </div>
+      )}
+      {editing && (
+        <div>
+          <textarea
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            rows={3}
+            autoFocus
+            placeholder="Enter remark for this customer..."
+            style={{
+              width:        '100%',
+              padding:      '8px 10px',
+              border:       '1px solid #f59e0b',
+              borderRadius: '6px',
+              fontSize:     '13px',
+              resize:       'vertical',
+              background:   '#fff',
+              outline:      'none',
+              marginBottom: '8px',
+            }}
+          />
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              style={{
+                background:   '#d97706',
+                color:        '#fff',
+                border:       'none',
+                borderRadius: '5px',
+                padding:      '5px 16px',
+                fontSize:     '12px',
+                fontWeight:   700,
+                cursor:       'pointer',
+              }}
+            >
+              {saving ? 'Saving...' : '✅ Save Remark'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setValue(remark); setEditing(false); }}
+              style={{
+                background:   '#f3f4f6',
+                color:        '#374151',
+                border:       '1px solid #d1d5db',
+                borderRadius: '5px',
+                padding:      '5px 16px',
+                fontSize:     '12px',
+                cursor:       'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const BillingForm = ({ onBillingComplete }) => {
   // ── Edit-mode detection ──────────────────────────────────────────
   const { id: invoiceId } = useParams();          // present on /billing/invoices/:id/edit
@@ -23,10 +161,13 @@ const BillingForm = ({ onBillingComplete }) => {
   const [selectedCustomerId,   setSelectedCustomerId]   = useState(null);
   const [customerSearchText,   setCustomerSearchText]   = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [customerRemark,       setCustomerRemark]       = useState('');
   const [saveCustomerDetails,  setSaveCustomerDetails]  = useState(false);
   const [invoiceNumber,        setInvoiceNumber]        = useState('');
   const [globalDiscount,      setGlobalDiscount]      = useState(0);
   const [manualDiscountItems, setManualDiscountItems] = useState(new Set());
+  const [addlDiscountValue, setAddlDiscountValue] = useState('');
+  const [addlDiscountType,  setAddlDiscountType]  = useState('amount'); // 'amount' or 'percent'
 
   const [formData, setFormData] = useState({
     customer_name:    '',
@@ -156,6 +297,14 @@ const BillingForm = ({ onBillingComplete }) => {
         setBillItems(mappedItems);
         console.log('✅ BillingForm EDIT: pre-filled', mappedItems.length, 'items');
 
+        // Pre-fill additional discount
+        setAddlDiscountValue(
+          inv.additional_discount_amount
+            ? String(inv.additional_discount_amount)
+            : ''
+        );
+        setAddlDiscountType(inv.additional_discount_type || 'amount');
+
       } catch (err) {
         console.error('❌ BillingForm EDIT: error loading invoice:', err);
         alert('Error loading invoice for editing');
@@ -183,24 +332,28 @@ const BillingForm = ({ onBillingComplete }) => {
     const customerDiscount = parseFloat(customer.discount) || 0;
     setGlobalDiscount(customerDiscount);
 
-    setFormData({
-      customer_name:    customer.customer_name || '',
-      customer_phone:   customer.phone_number  || '',
-      customer_address: customer.bill_to_address || '',
-      bill_to_gstin:    customer.bill_to_gstin   || '',
-      bill_to_state:    customer.bill_to_state   || '',
-      ship_same_as_bill,
-      ship_to_name:    customer.ship_to_name    || '',
-      ship_to_phone:   customer.ship_to_phone   || '',
-      ship_to_address: customer.ship_to_address || '',
-      ship_to_gstin:   customer.ship_to_gstin   || '',
-      ship_to_state:   customer.ship_to_state   || '',
-      place_of_supply: '',
-      eway_bill_no:    '',
-      notes:           '',
-      discount_percent: customer.discount || '',
-      tax_type:        customer.tax_type  || 'gst',
-    });
+    // Show customer remark if exists
+    setCustomerRemark(customer.notes || '');
+
+    
+  setFormData(prev => ({          // ← use prev to read existing notes
+    customer_name:    customer.customer_name   || '',
+    customer_phone:   customer.phone_number    || '',
+    customer_address: customer.bill_to_address || '',
+    bill_to_gstin:    customer.bill_to_gstin   || '',
+    bill_to_state:    customer.bill_to_state   || '',
+    ship_same_as_bill,
+    ship_to_name:    customer.ship_to_name    || '',
+    ship_to_phone:   customer.ship_to_phone   || '',
+    ship_to_address: customer.ship_to_address || '',
+    ship_to_gstin:   customer.ship_to_gstin   || '',
+    ship_to_state:   customer.ship_to_state   || '',
+    place_of_supply: '',
+    eway_bill_no:    '',
+    notes:           prev.notes,  // ← FIXED: preserve whatever user typed
+    discount_percent: customer.discount || '',
+    tax_type:        customer.tax_type  || 'gst',
+  }));  
   };
 
   const handleCustomerSearch = (text) => {
@@ -213,6 +366,9 @@ const BillingForm = ({ onBillingComplete }) => {
     setSelectedCustomerId(null);
     setCustomerSearchText('');
     setShowCustomerDropdown(false);
+    setCustomerRemark('');
+    setAddlDiscountValue('');
+    setAddlDiscountType('amount');
     setFormData({
       customer_name:    '',
       customer_phone:   '',
@@ -413,6 +569,8 @@ const BillingForm = ({ onBillingComplete }) => {
       discount_percent: parseFloat(formData.discount_percent) || 0,
       tax_type:        formData.tax_type         || 'gst',
       customer_id:     selectedCustomerId        || null,
+      additional_discount_value: parseFloat(addlDiscountValue) || 0,
+      additional_discount_type:  addlDiscountType,
       items: billItems.map(item => ({
         product_id:            parseInt(item.product_id),
         batch_number:          item.batch_number,
@@ -496,6 +654,7 @@ const BillingForm = ({ onBillingComplete }) => {
             ship_to_gstin:   formData.ship_same_as_bill ? null : (formData.ship_to_gstin   || null),
             ship_to_state:   formData.ship_same_as_bill ? null : (formData.ship_to_state   || null),
             discount:        parseFloat(formData.discount_percent) || 0,
+            notes:           formData.notes || '',
           };
           const response = await window.api.saveOrUpdateCustomer(customerData);
           if (response.success) {
@@ -511,7 +670,10 @@ const BillingForm = ({ onBillingComplete }) => {
       setBillItems([]);
       setSelectedCustomerId(null);
       setCustomerSearchText('');
+      setCustomerRemark('');
       setSaveCustomerDetails(false);
+      setAddlDiscountValue('');
+      setAddlDiscountType('amount');
       setFormData({
         customer_name:    '',
         customer_phone:   '',
@@ -685,6 +847,31 @@ const BillingForm = ({ onBillingComplete }) => {
           </button>
         </div>
       </div>
+
+      {/* ── Customer Remark Alert ───────────────────────────────── */}
+      {customerRemark !== undefined && selectedCustomerId && (
+        <RemarkBox
+          remark={customerRemark}
+          onSave={(updated) => {
+            setCustomerRemark(updated);
+            if (selectedCustomerId) {
+              window.api.updateCustomer(selectedCustomerId, {
+                customer_name:   formData.customer_name,
+                phone_number:    formData.customer_phone,
+                bill_to_address: formData.customer_address,
+                bill_to_gstin:   formData.bill_to_gstin,
+                bill_to_state:   formData.bill_to_state,
+                ship_to_name:    formData.ship_to_name,
+                ship_to_address: formData.ship_to_address,
+                ship_to_gstin:   formData.ship_to_gstin,
+                ship_to_state:   formData.ship_to_state,
+                discount:        formData.discount_percent,
+                notes:           updated,
+              }).catch(err => console.error('Failed to update remark:', err));
+            }
+          }}
+        />
+      )}
 
       {/* Bill To Information */}
       <h3 className="section-subheader">Bill To Information</h3>
@@ -892,6 +1079,63 @@ const BillingForm = ({ onBillingComplete }) => {
             className="input-field"
             placeholder="0"
           />
+        </div>
+
+        {/* Additional Discount (Feature 3) */}
+        <div className="form-group">
+          <label className="form-label">
+            Additional Discount
+            <span className="text-xs text-gray-500 ml-2 font-normal">
+              — applied after subtotal, before tax
+            </span>
+          </label>
+          <div className="flex gap-2">
+            {/* Toggle ₹ / % */}
+            <div className="flex rounded overflow-hidden border border-gray-300">
+              <button
+                type="button"
+                onClick={() => setAddlDiscountType('amount')}
+                className={`px-3 py-2 text-sm font-medium transition-colors ${
+                  addlDiscountType === 'amount'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                ₹
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddlDiscountType('percent')}
+                className={`px-3 py-2 text-sm font-medium transition-colors ${
+                  addlDiscountType === 'percent'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                %
+              </button>
+            </div>
+
+            {/* Value input */}
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={addlDiscountValue}
+              onChange={(e) => setAddlDiscountValue(e.target.value)}
+              className="input-field flex-1"
+              placeholder={addlDiscountType === 'percent' ? 'e.g. 5' : 'e.g. 100'}
+            />
+          </div>
+
+          {/* Live preview */}
+          {addlDiscountValue && parseFloat(addlDiscountValue) > 0 && (
+            <p className="text-xs text-green-700 mt-1 font-medium">
+              {addlDiscountType === 'percent'
+                ? `${addlDiscountValue}% off subtotal`
+                : `₹${parseFloat(addlDiscountValue).toFixed(2)} off subtotal`}
+            </p>
+          )}
         </div>
 
         <div className="form-group">

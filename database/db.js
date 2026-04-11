@@ -296,6 +296,23 @@ async function initializeDatabase() {
     // Column likely already exists, ignore error
   }
 
+  // Additional discount columns (Feature 3)
+  try {
+    run(
+      "ALTER TABLE invoices ADD COLUMN additional_discount_amount REAL DEFAULT 0",
+    );
+  } catch (e) {
+    /* column already exists */
+  }
+
+  try {
+    run(
+      "ALTER TABLE invoices ADD COLUMN additional_discount_type TEXT DEFAULT 'amount'",
+    );
+  } catch (e) {
+    /* column already exists */
+  }
+
   // Remove old customer_dl_number column if it exists (CHANGE 1)
   // Note: SQLite doesn't support DROP COLUMN directly for older versions,
   // so we leave it but it won't be used in new code
@@ -318,6 +335,13 @@ async function initializeDatabase() {
       UNIQUE(customer_name, phone_number)
     );
   `);
+
+  // Add notes/remark column to customers table
+  try {
+    run("ALTER TABLE customers ADD COLUMN notes TEXT DEFAULT ''");
+  } catch (e) {
+    /* column already exists */
+  }
 
   run(`
     CREATE TABLE IF NOT EXISTS invoices (
@@ -1103,6 +1127,81 @@ function getFinancialYear() {
   }
 }
 
+// Fix all existing invoices by recalculating totals with correct GST logic
+function recalculateInvoiceTotals() {
+  getDatabase();
+  try {
+    const allInvoices = all("SELECT * FROM invoices ORDER BY id ASC", []);
+    let fixedCount = 0;
+
+    for (const invoice of allInvoices) {
+      const items = all(`SELECT * FROM invoice_items WHERE invoice_id = ?`, [
+        invoice.id,
+      ]);
+
+      if (items.length === 0) continue;
+
+      let totalAmount = 0;
+      const itemsData = [];
+
+      // Calculate item subtotals
+      for (const item of items) {
+        const qty = parseFloat(item.quantity) || 0;
+        const rate = parseFloat(item.selling_rate) || 0;
+        const subtotal = qty * rate;
+        totalAmount += item.is_return ? -subtotal : subtotal;
+
+        itemsData.push({
+          subtotal,
+          gstPercent: parseFloat(item.gst_percent) || 0,
+          isReturn: item.is_return || 0,
+        });
+      }
+
+      // Apply additional discount
+      const addlDiscount = parseFloat(invoice.additional_discount_amount || 0);
+      const taxableAfterDiscount = Math.max(0, totalAmount - addlDiscount);
+
+      // Calculate GST ONLY if tax_type is 'gst' or 'igst'
+      const tax_type = invoice.tax_type || "gst";
+      let totalGST = 0;
+
+      if ((tax_type === "gst" || tax_type === "igst") && totalAmount > 0) {
+        const reductionRatio = taxableAfterDiscount / totalAmount;
+        itemsData.forEach((item) => {
+          if (item.gstPercent > 0) {
+            const reducedSubtotal = item.subtotal * reductionRatio;
+            const gst = (reducedSubtotal * item.gstPercent) / 100;
+            totalGST += item.isReturn ? -gst : gst;
+          }
+        });
+      }
+
+      const correctedTotal = parseFloat(
+        (taxableAfterDiscount + totalGST).toFixed(2),
+      );
+
+      // Update if different
+      if (Math.abs(correctedTotal - parseFloat(invoice.total_amount)) > 0.01) {
+        run("UPDATE invoices SET total_amount = ? WHERE id = ?", [
+          correctedTotal,
+          invoice.id,
+        ]);
+        fixedCount++;
+        console.log(
+          `[db] Fixed invoice ${invoice.id}: ${invoice.total_amount} → ${correctedTotal}`,
+        );
+      }
+    }
+
+    console.log(`[db] recalculateInvoiceTotals: Fixed ${fixedCount} invoices`);
+    return { success: true, fixed: fixedCount };
+  } catch (err) {
+    console.error("[db] recalculateInvoiceTotals error:", err);
+    return { success: false, error: err.message };
+  }
+}
+
 // Generate next invoice number using better-sqlite3 direct access
 function getNextInvoiceNumber() {
   getDatabase();
@@ -1185,14 +1284,36 @@ function createInvoice(invoiceData) {
     // taxableAmount = totalAmount directly — no discount applied again
     const taxableAmount = totalAmount;
 
-    // Calculate GST on taxableAmount per item
-    // selling_rate is already post-discount so full subtotal is taxable
-    let totalGST = 0;
-    itemsWithSubtotals.forEach((item) => {
-      totalGST += (item.subtotal * item.gstPercent) / 100;
-    });
+    // Calculate additional discount
+    const addlDiscountType = invoiceData.additional_discount_type || "amount";
+    const addlDiscountAmount =
+      addlDiscountType === "percent"
+        ? parseFloat(
+            (
+              ((invoiceData.additional_discount_value || 0) / 100) *
+              taxableAmount
+            ).toFixed(2),
+          )
+        : parseFloat(invoiceData.additional_discount_value || 0);
 
-    const finalTotal = taxableAmount + totalGST;
+    const taxableAfterAddl = Math.max(0, taxableAmount - addlDiscountAmount);
+
+    // Recalculate GST on reduced taxable amount — ONLY if tax_type is 'gst' or 'igst'
+    const tax_type = invoiceData.tax_type || "gst";
+    let totalGSTAfterAddl = 0;
+    if ((tax_type === "gst" || tax_type === "igst") && taxableAmount > 0) {
+      // Apply same proportion of reduction to each item's GST
+      const reductionRatio = taxableAfterAddl / taxableAmount;
+      itemsWithSubtotals.forEach((item) => {
+        if (item.gstPercent > 0) {
+          const reducedSubtotal = item.subtotal * reductionRatio;
+          totalGSTAfterAddl += (reducedSubtotal * item.gstPercent) / 100;
+        }
+      });
+    }
+
+    const finalTotal = taxableAfterAddl + totalGSTAfterAddl;
+
     const invoiceDiscountPercent = invoiceData.discount_percent || 0;
 
     // Insert invoice
@@ -1202,27 +1323,30 @@ function createInvoice(invoiceData) {
         bill_to_gstin, bill_to_state,
         ship_same_as_bill, ship_to_name, ship_to_address, ship_to_gstin, ship_to_state,
         place_of_supply, eway_bill_no, invoice_number,
-        notes, discount_percent, tax_type, total_amount, customer_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        notes, discount_percent, tax_type, total_amount, customer_id,
+        additional_discount_amount, additional_discount_type
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        invoiceData.customer_name, // 1
-        invoiceData.customer_phone || "", // 2
-        invoiceData.customer_address || "", // 3
-        invoiceData.bill_to_gstin || "", // 4
-        invoiceData.bill_to_state || "", // 5
-        invoiceData.ship_same_as_bill ? 1 : 0, // 6
-        invoiceData.ship_to_name || "", // 7
-        invoiceData.ship_to_address || "", // 8
-        invoiceData.ship_to_gstin || "", // 9
-        invoiceData.ship_to_state || "", // 10
-        invoiceData.place_of_supply || "", // 11
-        invoiceData.eway_bill_no || "", // 12
-        invoiceData.invoice_number || null, // 13
-        invoiceData.notes || "", // 14
-        invoiceDiscountPercent, // 15
-        invoiceData.tax_type || "gst", // 16
-        finalTotal, // 17
-        invoiceData.customer_id || null, // 18
+        invoiceData.customer_name,
+        invoiceData.customer_phone || "",
+        invoiceData.customer_address || "",
+        invoiceData.bill_to_gstin || "",
+        invoiceData.bill_to_state || "",
+        invoiceData.ship_same_as_bill ? 1 : 0,
+        invoiceData.ship_to_name || "",
+        invoiceData.ship_to_address || "",
+        invoiceData.ship_to_gstin || "",
+        invoiceData.ship_to_state || "",
+        invoiceData.place_of_supply || "",
+        invoiceData.eway_bill_no || "",
+        invoiceData.invoice_number || null,
+        invoiceData.notes || "",
+        invoiceDiscountPercent,
+        tax_type,
+        finalTotal,
+        invoiceData.customer_id || null,
+        addlDiscountAmount,
+        addlDiscountType,
       ],
     );
 
@@ -1434,12 +1558,42 @@ function updateInvoice(id, invoiceData) {
     }
 
     // Calculate GST on taxable amount (matching createInvoice logic)
-    let totalGST = 0;
-    processedItems.forEach((item) => {
-      totalGST += (item.subtotal * item.gstPct) / 100;
-    });
+    const tax_typeUpdate = invoiceData.tax_type || "gst";
+    let totalGSTUpdate = 0;
 
-    const finalTotal = totalAmount + totalGST;
+    // Additional discount
+    const addlDiscountTypeUpdate =
+      invoiceData.additional_discount_type || "amount";
+    const addlDiscountValueUpdate = parseFloat(
+      invoiceData.additional_discount_value || 0,
+    );
+
+    const addlDiscountAmountUpdate =
+      addlDiscountTypeUpdate === "percent"
+        ? parseFloat(((addlDiscountValueUpdate / 100) * totalAmount).toFixed(2))
+        : parseFloat(addlDiscountValueUpdate.toFixed(2));
+
+    const taxableAmountUpdate = parseFloat(
+      Math.max(0, totalAmount - addlDiscountAmountUpdate).toFixed(2),
+    );
+
+    // GST only if tax_type is 'gst' or 'igst'
+    if (
+      (tax_typeUpdate === "gst" || tax_typeUpdate === "igst") &&
+      totalAmount > 0
+    ) {
+      const reductionRatio = taxableAmountUpdate / totalAmount;
+      processedItems.forEach((item) => {
+        if (item.gstPct > 0) {
+          const reducedSubtotal = item.subtotal * reductionRatio;
+          totalGSTUpdate += (reducedSubtotal * item.gstPct) / 100;
+        }
+      });
+    }
+
+    const finalTotal = parseFloat(
+      (taxableAmountUpdate + totalGSTUpdate).toFixed(2),
+    );
 
     // ── Step 6: Update invoice row ──
     run(
@@ -1465,6 +1619,8 @@ function updateInvoice(id, invoiceData) {
         tax_type          = ?,
         total_amount      = ?,
         customer_id       = ?,
+        additional_discount_amount = ?,
+        additional_discount_type   = ?,
         updated_at        = CURRENT_TIMESTAMP
       WHERE id = ?`,
       [
@@ -1486,9 +1642,11 @@ function updateInvoice(id, invoiceData) {
         invoiceData.invoice_number || existingInvoice.invoice_number || "",
         invoiceData.notes || "",
         parseFloat(invoiceData.discount_percent) || 0,
-        invoiceData.tax_type || "gst",
-        invoiceData.total_amount || finalTotal,
+        tax_typeUpdate,
+        finalTotal,
         invoiceData.customer_id || null,
+        addlDiscountAmountUpdate,
+        addlDiscountTypeUpdate,
         id,
       ],
     );
@@ -1626,6 +1784,7 @@ function saveOrUpdateCustomer(customerData) {
       ship_to_gstin,
       ship_to_state,
       discount,
+      notes,
     } = customerData;
 
     // Check if customer with same name and phone already exists
@@ -1640,7 +1799,7 @@ function saveOrUpdateCustomer(customerData) {
         `UPDATE customers SET 
           bill_to_address = ?, bill_to_gstin = ?, bill_to_state = ?,
           ship_to_name = ?, ship_to_address = ?, ship_to_gstin = ?, ship_to_state = ?,
-          discount = ?, updated_at = CURRENT_TIMESTAMP
+          discount = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
           WHERE id = ?`,
         [
           bill_to_address || null,
@@ -1651,6 +1810,7 @@ function saveOrUpdateCustomer(customerData) {
           ship_to_gstin || null,
           ship_to_state || null,
           parseFloat(discount) || 0,
+          notes || "",
           existing.id,
         ],
       );
@@ -1662,8 +1822,8 @@ function saveOrUpdateCustomer(customerData) {
           customer_name, phone_number,
           bill_to_address, bill_to_gstin, bill_to_state,
           ship_to_name, ship_to_address, ship_to_gstin, ship_to_state,
-          discount
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          discount, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           customer_name,
           phone_number || null,
@@ -1675,6 +1835,7 @@ function saveOrUpdateCustomer(customerData) {
           ship_to_gstin || null,
           ship_to_state || null,
           parseFloat(discount) || 0,
+          notes || "",
         ],
       );
       return getCustomerById(res.lastID);
@@ -1699,6 +1860,7 @@ function updateCustomer(customerId, customerData) {
       ship_to_gstin,
       ship_to_state,
       discount,
+      notes,
     } = customerData;
 
     run(
@@ -1706,7 +1868,7 @@ function updateCustomer(customerId, customerData) {
         customer_name = ?, phone_number = ?,
         bill_to_address = ?, bill_to_gstin = ?, bill_to_state = ?,
         ship_to_name = ?, ship_to_address = ?, ship_to_gstin = ?, ship_to_state = ?,
-        discount = ?, updated_at = CURRENT_TIMESTAMP
+        discount = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?`,
       [
         customer_name,
@@ -1719,6 +1881,7 @@ function updateCustomer(customerId, customerData) {
         ship_to_gstin || null,
         ship_to_state || null,
         parseFloat(discount) || 0,
+        notes || "",
         customerId,
       ],
     );
@@ -2283,6 +2446,140 @@ function loginOwner(username, password) {
 //   Functionality removed - users must use alternative password reset methods
 // }
 
+// ═══════════════════════════════════════════════════════════════
+// HSN-wise GST Report
+// ═══════════════════════════════════════════════════════════════
+function getHSNGSTReport({ startDate, endDate, viewMode }) {
+  getDatabase();
+
+  try {
+    // viewMode: 'tax_only' → exclude no-tax invoices
+    //           'all'      → include everything
+    const taxFilter = viewMode === "tax_only" ? `AND i.tax_type != 'none'` : "";
+
+    // Fetch all matching line items with invoice context
+    const rows = all(
+      `SELECT
+        ii.hsn_code,
+        ii.gst_percent,
+        ii.quantity,
+        ii.subtotal,
+        ii.mrp,
+        ii.is_return,
+        i.tax_type,
+        i.id                                 AS invoice_id,
+        i.additional_discount_amount
+       FROM invoice_items ii
+       JOIN invoices i ON ii.invoice_id = i.id
+       WHERE i.created_at >= ?
+         AND i.created_at <  ?
+         ${taxFilter}
+       ORDER BY ii.hsn_code ASC, i.id ASC`,
+      [startDate, endDate],
+    );
+
+    // ── Per-invoice: calculate reduction ratio from additional discount ──
+    // We need the subtotal sum per invoice to apply the ratio correctly
+    const invoiceSubtotals = {};
+    rows.forEach((row) => {
+      if (!invoiceSubtotals[row.invoice_id]) {
+        invoiceSubtotals[row.invoice_id] = 0;
+      }
+      const s = parseFloat(row.subtotal || 0);
+      invoiceSubtotals[row.invoice_id] += row.is_return ? -s : s;
+    });
+
+    // ── Group by HSN + gst_percent + tax_type ──
+    const grouped = {};
+
+    rows.forEach((row) => {
+      const hsn = row.hsn_code || "NO HSN";
+      const gstPct = parseFloat(row.gst_percent || 0);
+      const taxType = row.tax_type || "gst";
+      const key = `${hsn}__${gstPct}__${taxType}`;
+
+      if (!grouped[key]) {
+        grouped[key] = {
+          hsn_code: hsn,
+          gst_percent: gstPct,
+          tax_type: taxType,
+          total_qty: 0,
+          taxable_value: 0,
+          cgst_amount: 0,
+          sgst_amount: 0,
+          igst_amount: 0,
+          total_tax: 0,
+          invoice_value: 0,
+          listed_price: 0,
+        };
+      }
+
+      const entry = grouped[key];
+
+      // Raw subtotal for this item (signed for returns)
+      const rawSubtotal = parseFloat(row.subtotal || 0);
+      const signedSubtotal = row.is_return ? -rawSubtotal : rawSubtotal;
+
+      // Reduction ratio from additional discount on this invoice
+      const invSubtotal = invoiceSubtotals[row.invoice_id] || 0;
+      const addlDiscount = parseFloat(row.additional_discount_amount || 0);
+      const ratio =
+        invSubtotal > 0
+          ? Math.max(0, (invSubtotal - addlDiscount) / invSubtotal)
+          : 1;
+
+      // Taxable value for this item after proportional discount
+      const taxableForItem = signedSubtotal * ratio;
+
+      // GST amounts
+      let cgst = 0,
+        sgst = 0,
+        igst = 0;
+      if (taxType === "igst") {
+        igst = (taxableForItem * gstPct) / 100;
+      } else if (taxType === "gst") {
+        cgst = (taxableForItem * gstPct) / 200;
+        sgst = (taxableForItem * gstPct) / 200;
+      }
+      // tax_type === 'none' → all stay 0
+
+      const totalTax = cgst + sgst + igst;
+      const invoiceValue = taxableForItem + totalTax;
+
+      // Listed Price = qty × mrp (not affected by discount or ratio)
+      const qty = parseFloat(row.quantity || 0);
+      const mrp = parseFloat(row.mrp || 0);
+      const listedPrice = row.is_return ? -(qty * mrp) : qty * mrp;
+
+      entry.total_qty += qty;
+      entry.taxable_value += taxableForItem;
+      entry.cgst_amount += cgst;
+      entry.sgst_amount += sgst;
+      entry.igst_amount += igst;
+      entry.total_tax += totalTax;
+      entry.invoice_value += invoiceValue;
+      entry.listed_price += listedPrice;
+    });
+
+    // ── Round all values to 2 decimal places ──
+    const result = Object.values(grouped).map((r) => ({
+      ...r,
+      taxable_value: parseFloat(r.taxable_value.toFixed(2)),
+      cgst_amount: parseFloat(r.cgst_amount.toFixed(2)),
+      sgst_amount: parseFloat(r.sgst_amount.toFixed(2)),
+      igst_amount: parseFloat(r.igst_amount.toFixed(2)),
+      total_tax: parseFloat(r.total_tax.toFixed(2)),
+      invoice_value: parseFloat(r.invoice_value.toFixed(2)),
+      listed_price: parseFloat(r.listed_price.toFixed(2)),
+    }));
+
+    return { success: true, data: result };
+  } catch (err) {
+    console.error("[db] getHSNGSTReport error:", err);
+    throw err;
+  }
+}
+
 module.exports = {
   initializeDatabase,
   getDatabase,
@@ -2303,6 +2600,8 @@ module.exports = {
   getHSNCodes,
   updateHSNCode,
   deleteHSNCode,
+  getHSNGSTReport,
+  recalculateInvoiceTotals,
   getNextInvoiceNumber,
   createInvoice,
   getInvoices,

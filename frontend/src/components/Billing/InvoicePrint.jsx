@@ -165,8 +165,15 @@ const InvoicePrint = ({ invoice, shop, qrDataUrl }) => {
     return item.is_return ? sum - v : sum + v;
   }, 0);
 
-  const taxableAmount = parseFloat(postDiscountSubtotal.toFixed(2));
-  const tax_type      = invoice.tax_type || 'gst';
+  const additionalDiscount = parseFloat(invoice.additional_discount_amount || 0);
+  const taxableAmount      = parseFloat(
+    Math.max(0, postDiscountSubtotal - additionalDiscount).toFixed(2)
+  );
+  const tax_type           = invoice.tax_type || 'gst';
+
+  const reductionRatio = postDiscountSubtotal > 0
+  ? taxableAmount / postDiscountSubtotal
+  : 1;
 
   let cgstByRate = {};
   let sgstByRate = {};
@@ -177,7 +184,8 @@ const InvoicePrint = ({ invoice, shop, qrDataUrl }) => {
     const gstRate = parseFloat(item.gst_percent || 0);
     if (gstRate > 0) {
       const s       = parseFloat(item.subtotal || 0);
-      const taxable = item.is_return ? -s : s;
+
+      const taxable = (item.is_return ? -s : s) * reductionRatio;
       if (tax_type === 'igst') {
         igstByRate[gstRate] = (igstByRate[gstRate] || 0) + (taxable * gstRate) / 100;
       } else {
@@ -415,7 +423,7 @@ const InvoicePrint = ({ invoice, shop, qrDataUrl }) => {
                 {/* ══ LAST PAGE: Financial summary ═════════════════ */}
                 {isLastPage && (
                   <>
-                    {/* Subtotal */}
+                    {/* Subtotal (sum of all items after item-level discounts) */}
                     <tr>
                       <td className="inv-sum-label">Subtotal:</td>
                       <td className="inv-sum-value" colSpan={2}>
@@ -423,11 +431,29 @@ const InvoicePrint = ({ invoice, shop, qrDataUrl }) => {
                       </td>
                     </tr>
 
-                    {/* Taxable Amount */}
+                    {/* Additional Discount row — only show if non-zero */}
+                    {parseFloat(invoice.additional_discount_amount || 0) > 0 && (
+                      <tr>
+                        <td className="inv-sum-label" style={{ color: '#dc2626' }}>
+                          Additional Discount
+                          {invoice.additional_discount_type === 'percent'
+                            ? ` (%)`
+                            : ` (₹)`}:
+                        </td>
+                        <td className="inv-sum-value" colSpan={2} style={{ color: '#dc2626' }}>
+                          − ₹{parseFloat(invoice.additional_discount_amount).toFixed(2)}
+                        </td>
+                      </tr>
+                    )}
+
+                    {/* Taxable Amount — after additional discount */}
                     <tr>
                       <td className="inv-sum-label">Taxable Amount:</td>
                       <td className="inv-sum-value" colSpan={2}>
-                        ₹{taxableAmount.toFixed(2)}
+                        ₹{(
+                            postDiscountSubtotal -
+                            parseFloat(invoice.additional_discount_amount || 0)
+                          ).toFixed(2)}
                       </td>
                     </tr>
 
@@ -477,55 +503,101 @@ const InvoicePrint = ({ invoice, shop, qrDataUrl }) => {
                       </td>
                     </tr>
 
-                    {/* Bank Details */}
+                    {/* ── Bank Details + Signature — combined bottom row ── */}
                     <tr>
-                      <td colSpan={3} style={{ padding: '6px 8px' }}>
+                      <td colSpan={3} style={{ padding: '6px 8px 4px' }}>
                         <div style={{
-                          fontWeight: 700, fontSize: '11px', marginBottom: '4px'
+                          display:    'flex',
+                          alignItems: 'stretch',
+                          gap:        '0px',
                         }}>
-                          Bank Details:
-                        </div>
-                        <div style={{
-                          display: 'flex', gap: '0px',
-                          fontSize: '10.5px', marginTop: '4px'
-                        }}>
-                          {shop.bank_holder && (
-                            <div style={{
-                              paddingRight: '12px', marginRight: '12px',
-                              borderRight: '1px solid #000'
-                            }}>
-                              <strong>A/c Holder:</strong> {shop.bank_holder}
-                            </div>
-                          )}
-                          {shop.bank_name && (
-                            <div style={{
-                              paddingRight: '12px', marginRight: '12px',
-                              borderRight: '1px solid #000'
-                            }}>
-                              <strong>Bank Name:</strong> {shop.bank_name}
-                            </div>
-                          )}
-                          {shop.bank_account && (
-                            <div style={{
-                              paddingRight: '12px', marginRight: '12px',
-                              borderRight: '1px solid #000'
-                            }}>
-                              <strong>A/c No:</strong> {shop.bank_account}
-                            </div>
-                          )}
-                          {shop.bank_ifsc && (
-                            <div>
-                              <strong>IFSC:</strong> {shop.bank_ifsc}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
 
-                    {/* Thank You */}
-                    <tr>
-                      <td className="inv-thankyou-cell" colSpan={3}>
-                        Thank You - Visit Again!
+                          {/* Left — Bank Details */}
+                          <div style={{
+                            flex:        1,
+                            paddingRight: '12px',
+                            borderRight:  '1px solid #ccc',
+                          }}>
+                            <div style={{
+                              fontWeight:   700,
+                              fontSize:     '10.5px',
+                              marginBottom: '5px',
+                            }}>
+                              Bank Details:
+                            </div>
+
+                            {/* Row 1 — A/c Holder + Bank Name */}
+                            <div style={{
+                              display:      'flex',
+                              gap:          '20px',
+                              fontSize:     '10px',
+                              marginBottom: '4px',
+                            }}>
+                              {shop.bank_holder && (
+                                <div>
+                                  <strong>A/c Holder:</strong> {shop.bank_holder}
+                                </div>
+                              )}
+                              {shop.bank_name && (
+                                <div>
+                                  <strong>Bank Name:</strong> {shop.bank_name}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Row 2 — A/c No + IFSC */}
+                            <div style={{
+                              display:  'flex',
+                              gap:      '20px',
+                              fontSize: '10px',
+                            }}>
+                              {shop.bank_account && (
+                                <div>
+                                  <strong>A/c No:</strong> {shop.bank_account}
+                                </div>
+                              )}
+                              {shop.bank_ifsc && (
+                                <div>
+                                  <strong>IFSC:</strong> {shop.bank_ifsc}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Right — Signature box */}
+                          <div style={{
+                            width:          '190px',
+                            paddingLeft:    '12px',
+                            display:        'flex',
+                            flexDirection:  'column',
+                            alignItems:     'center',
+                            justifyContent: 'flex-end',
+                          }}>
+                            {/* Blank signing space */}
+                            <div style={{ height: '45px', width: '100%' }} />
+
+                            {/* Signature line */}
+                            <div style={{
+                              borderTop:  '1px solid #000',
+                              width:      '100%',
+                              paddingTop: '3px',
+                              textAlign:  'center',
+                              fontSize:   '9.5px',
+                              fontWeight: 700,
+                            }}>
+                              For {shop.shop_name || 'OJASHWAI ELECTRICALS'}
+                            </div>
+                            <div style={{
+                              fontSize:  '9px',
+                              color:     '#444',
+                              textAlign: 'center',
+                              marginTop: '1px',
+                            }}>
+                              Authorised Signatory
+                            </div>
+                          </div>
+
+                        </div>
                       </td>
                     </tr>
                   </>
