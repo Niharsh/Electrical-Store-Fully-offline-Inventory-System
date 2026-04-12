@@ -48,32 +48,49 @@ const HSNGSTReport = () => {
   const [hasLoaded,    setHasLoaded]    = useState(false);
 
   // ── Date range from filters ───────────────────────────────
-  const getDateRange = useCallback(() => {
-    if (filterType === 'month') {
-      const y  = filterYear;
-      const m  = filterMonth; // 0-indexed
-      const start = new Date(y, m, 1);
-      const end   = new Date(y, m + 1, 1);
-      return {
-        startDate: start.toISOString().slice(0, 10),
-        endDate:   end.toISOString().slice(0, 10),
-        label:     `${MONTHS[m]} ${y}`,
-      };
-    }
-    if (filterType === 'year') {
-      return {
-        startDate: `${filterYear}-01-01`,
-        endDate:   `${filterYear + 1}-01-01`,
-        label:     `Year ${filterYear}`,
-      };
-    }
-    // financial year
+ const getDateRange = useCallback(() => {
+
+  // ✅ FIX: Build date strings directly without using toISOString()
+  // toISOString() converts to UTC which causes wrong dates in IST timezone
+  // e.g. new Date(2026, 3, 1).toISOString() = '2026-03-31' in India ❌
+
+  const pad = (n) => String(n).padStart(2, '0');
+
+  if (filterType === 'month') {
+    const y = filterYear;
+    const m = filterMonth; // 0-indexed
+
+    // Start = first day of selected month
+    const startStr = `${y}-${pad(m + 1)}-01`;
+
+    // End = first day of NEXT month (exclusive)
+    const endYear  = m === 11 ? y + 1 : y;
+    const endMonth = m === 11 ? 1 : m + 2; // 1-indexed next month
+    const endStr   = `${endYear}-${pad(endMonth)}-01`;
+
     return {
-      startDate: `${filterFYStart}-04-01`,
-      endDate:   `${filterFYStart + 1}-04-01`,
-      label:     `FY ${filterFYStart}-${String(filterFYStart + 1).slice(-2)}`,
+      startDate: startStr,
+      endDate:   endStr,
+      label:     `${MONTHS[m]} ${y}`,
     };
-  }, [filterType, filterMonth, filterYear, filterFYStart]);
+  }
+
+  if (filterType === 'year') {
+    return {
+      startDate: `${filterYear}-01-01`,
+      endDate:   `${filterYear + 1}-01-01`,
+      label:     `Year ${filterYear}`,
+    };
+  }
+
+  // Financial year (April to March)
+  return {
+    startDate: `${filterFYStart}-04-01`,
+    endDate:   `${filterFYStart + 1}-04-01`,
+    label:     `FY ${filterFYStart}-${String(filterFYStart + 1).slice(-2)}`,
+  };
+
+}, [filterType, filterMonth, filterYear, filterFYStart]);
 
   // ── Fetch report ──────────────────────────────────────────
   const handleFetch = async () => {

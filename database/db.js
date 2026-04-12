@@ -2453,11 +2453,8 @@ function getHSNGSTReport({ startDate, endDate, viewMode }) {
   getDatabase();
 
   try {
-    // viewMode: 'tax_only' → exclude no-tax invoices
-    //           'all'      → include everything
     const taxFilter = viewMode === "tax_only" ? `AND i.tax_type != 'none'` : "";
 
-    // Fetch all matching line items with invoice context
     const rows = all(
       `SELECT
         ii.hsn_code,
@@ -2467,7 +2464,7 @@ function getHSNGSTReport({ startDate, endDate, viewMode }) {
         ii.mrp,
         ii.is_return,
         i.tax_type,
-        i.id                                 AS invoice_id,
+        i.id                          AS invoice_id,
         i.additional_discount_amount
        FROM invoice_items ii
        JOIN invoices i ON ii.invoice_id = i.id
@@ -2478,8 +2475,7 @@ function getHSNGSTReport({ startDate, endDate, viewMode }) {
       [startDate, endDate],
     );
 
-    // ── Per-invoice: calculate reduction ratio from additional discount ──
-    // We need the subtotal sum per invoice to apply the ratio correctly
+    // ── Per-invoice subtotal for reduction ratio ──
     const invoiceSubtotals = {};
     rows.forEach((row) => {
       if (!invoiceSubtotals[row.invoice_id]) {
@@ -2489,20 +2485,26 @@ function getHSNGSTReport({ startDate, endDate, viewMode }) {
       invoiceSubtotals[row.invoice_id] += row.is_return ? -s : s;
     });
 
-    // ── Group by HSN + gst_percent + tax_type ──
+    // ── Group by HSN + gst_percent only (NOT tax_type) ──
+    // tax_type is used for GST calculation per-row,
+    // but should NOT split the grouping key
     const grouped = {};
 
     rows.forEach((row) => {
       const hsn = row.hsn_code || "NO HSN";
       const gstPct = parseFloat(row.gst_percent || 0);
-      const taxType = row.tax_type || "gst";
-      const key = `${hsn}__${gstPct}__${taxType}`;
+
+      // ✅ FIX 1: Do NOT include tax_type in key
+      // Same HSN + same gst_percent = same row regardless of tax_type
+      const key = `${hsn}__${gstPct}`;
 
       if (!grouped[key]) {
         grouped[key] = {
           hsn_code: hsn,
           gst_percent: gstPct,
-          tax_type: taxType,
+          // ✅ Store the tax_type for display purposes
+          // Use the actual tax_type from first row for this group
+          tax_type: row.tax_type || "none",
           total_qty: 0,
           taxable_value: 0,
           cgst_amount: 0,
@@ -2516,7 +2518,7 @@ function getHSNGSTReport({ startDate, endDate, viewMode }) {
 
       const entry = grouped[key];
 
-      // Raw subtotal for this item (signed for returns)
+      // Raw subtotal (signed for returns)
       const rawSubtotal = parseFloat(row.subtotal || 0);
       const signedSubtotal = row.is_return ? -rawSubtotal : rawSubtotal;
 
@@ -2531,27 +2533,32 @@ function getHSNGSTReport({ startDate, endDate, viewMode }) {
       // Taxable value for this item after proportional discount
       const taxableForItem = signedSubtotal * ratio;
 
-      // GST amounts
+      // Use actual tax_type per row for GST calculation
+      // ✅ FIX 2: Normalize NULL tax_type properly
+      const actualTaxType = row.tax_type || "none";
+
       let cgst = 0,
         sgst = 0,
         igst = 0;
-      if (taxType === "igst") {
+      if (actualTaxType === "igst") {
         igst = (taxableForItem * gstPct) / 100;
-      } else if (taxType === "gst") {
+      } else if (actualTaxType === "gst") {
         cgst = (taxableForItem * gstPct) / 200;
         sgst = (taxableForItem * gstPct) / 200;
       }
-      // tax_type === 'none' → all stay 0
+      // 'none' → all stay 0
 
       const totalTax = cgst + sgst + igst;
       const invoiceValue = taxableForItem + totalTax;
 
-      // Listed Price = qty × mrp (not affected by discount or ratio)
+      // Listed Price = qty × mrp
       const qty = parseFloat(row.quantity || 0);
       const mrp = parseFloat(row.mrp || 0);
       const listedPrice = row.is_return ? -(qty * mrp) : qty * mrp;
 
-      entry.total_qty += qty;
+      // ✅ FIX 3: Subtract qty for return items
+      entry.total_qty += row.is_return ? -qty : qty;
+
       entry.taxable_value += taxableForItem;
       entry.cgst_amount += cgst;
       entry.sgst_amount += sgst;
@@ -2559,11 +2566,21 @@ function getHSNGSTReport({ startDate, endDate, viewMode }) {
       entry.total_tax += totalTax;
       entry.invoice_value += invoiceValue;
       entry.listed_price += listedPrice;
+
+      // ✅ Update tax_type on group:
+      // If ANY row in this group has actual GST, mark the group accordingly
+      // Priority: gst > igst > none
+      if (actualTaxType === "gst" && entry.tax_type !== "gst") {
+        entry.tax_type = "gst";
+      } else if (actualTaxType === "igst" && entry.tax_type === "none") {
+        entry.tax_type = "igst";
+      }
     });
 
     // ── Round all values to 2 decimal places ──
     const result = Object.values(grouped).map((r) => ({
       ...r,
+      total_qty: Math.round(r.total_qty), // qty should be whole number
       taxable_value: parseFloat(r.taxable_value.toFixed(2)),
       cgst_amount: parseFloat(r.cgst_amount.toFixed(2)),
       sgst_amount: parseFloat(r.sgst_amount.toFixed(2)),
