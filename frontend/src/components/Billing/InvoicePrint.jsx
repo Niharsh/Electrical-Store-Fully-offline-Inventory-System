@@ -77,17 +77,17 @@ const ItemsTable = ({ items, startIndex, pageQty, pageSubtotal, isLastPage }) =>
             className={item.is_return ? 'inv-return-row' : ''}
           >
             <td className="ic-sno">
-              {startIndex + idx + 1}{item.is_return ? 'R' : ''}
+              {startIndex + idx + 1}{!!item.is_return ? 'R' : ''}
             </td>
             <td className="ic-desc">
               {item.product_name}
-              {item.is_return && (
+              {!!item.is_return && (
                 <span className="inv-return-badge"> [RETURN]</span>
               )}
             </td>
             <td className="ic-hsn">{item.hsn_code || '-'}</td>
             <td className="ic-qty">
-              {item.is_return ? '-' : ''}
+              {!!item.is_return ? '-' : ''}
               {parseFloat(item.quantity || 0)}
             </td>
             <td className="ic-unit">{item.unit || 'PCS'}</td>
@@ -102,7 +102,7 @@ const ItemsTable = ({ items, startIndex, pageQty, pageSubtotal, isLastPage }) =>
             </td>
             <td className="ic-amt">
               {Math.abs(amt).toFixed(2)}
-              {item.is_return ? ' CR' : ''}
+              {!!item.is_return ? ' CR' : ''}
             </td>
           </tr>
         );

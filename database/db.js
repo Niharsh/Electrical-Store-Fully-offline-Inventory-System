@@ -1356,10 +1356,23 @@ function createInvoice(invoiceData) {
     const savedItems = [];
     for (const item of itemsWithSubtotals) {
       // Get product name to store with item
-      const product = get("SELECT name FROM products WHERE id = ?", [
+      const product = get('SELECT "name" FROM products WHERE id = ?', [
         item.product_id,
       ]);
-      const productName = product ? String(product.name).trim() : ""; // Ensure it's a non-empty string, never "0"
+
+      // Ensure productName is properly set from database, never "0" or undefined
+      let productName = "";
+      if (product && product.name) {
+        productName = String(product.name).trim();
+        // Safety check: ensure name isn't "0" or empty
+        if (!productName || productName === "0") {
+          throw new Error(
+            `Invalid product name for product ID ${item.product_id}: "${productName}"`,
+          );
+        }
+      } else {
+        throw new Error(`Product not found for ID: ${item.product_id}`);
+      }
 
       // Use expiry_date from form if provided, otherwise fetch from batch
       let expiryDate = item.expiry_date || null;
@@ -1370,10 +1383,6 @@ function createInvoice(invoiceData) {
         );
         expiryDate = batch ? batch.expiry_date : null;
       }
-
-      console.log(
-        `[db] createInvoice: Adding item - Product: "${productName}", HSN: "${item.hsn_code}", Expiry: "${expiryDate}"`,
-      );
 
       const itemRes = run(
         `INSERT INTO invoice_items (
@@ -1654,12 +1663,25 @@ function updateInvoice(id, invoiceData) {
     // ── Step 7: Insert new items + deduct stock ──
     for (const item of processedItems) {
       // Get product name fresh from DB (same as createInvoice)
-      let productName = item.product_name || "";
-      if (item.product_id) {
-        const product = get("SELECT name FROM products WHERE id = ?", [
+      let productName = "";
+      if (item.product_name && item.product_name !== "0") {
+        productName = String(item.product_name).trim();
+      }
+      if (!productName && item.product_id) {
+        const product = get('SELECT "name" FROM products WHERE id = ?', [
           item.product_id,
         ]);
-        if (product) productName = String(product.name).trim();
+        if (product && product.name) {
+          productName = String(product.name).trim();
+          // Safety check: ensure name isn't "0" or empty
+          if (!productName || productName === "0") {
+            throw new Error(
+              `Invalid product name for product ID ${item.product_id}: "${productName}"`,
+            );
+          }
+        } else {
+          throw new Error(`Product not found for ID: ${item.product_id}`);
+        }
       }
 
       // Get expiry_date from batch if not provided
