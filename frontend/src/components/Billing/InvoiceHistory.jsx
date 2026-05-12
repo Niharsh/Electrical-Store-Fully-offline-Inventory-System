@@ -1,16 +1,37 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInvoices } from '../../context/InvoiceContext';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import ErrorAlert from '../Common/ErrorAlert';
 
 const InvoiceHistory = ({ onViewDetails }) => {
-  const { invoices, loading, error, fetchInvoices } = useInvoices();
+  const { invoices, loading, error, fetchInvoices, deleteInvoice } = useInvoices();
   const navigate = useNavigate();
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     fetchInvoices();
   }, []);
+
+  const handleDeleteClick = async (invoice) => {
+    // Show confirmation dialog
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete invoice ${invoice.invoice_number || `INV-${invoice.id}`}?\n\nThis action will:\n• Delete the invoice\n• Restore all product quantities to inventory\n\nThis cannot be undone.`
+    );
+
+    if (!confirmDelete) return;
+
+    setDeleteLoading(true);
+    try {
+      await deleteInvoice(invoice.id);
+      // Success message would be shown by context error handling or you could add a toast here
+    } catch (err) {
+      console.error('Delete failed:', err);
+      // Error is already set in context
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   if (loading) return <LoadingSpinner />;
 
@@ -58,26 +79,40 @@ const InvoiceHistory = ({ onViewDetails }) => {
                     {invoice.items?.length || 0}
                   </td>
 
-                  {/* ── Actions column: View + Edit ── */}
+                  {/* ── Actions column: View + Edit + Delete ── */}
                   <td className="py-4 text-center">
                     <div className="flex items-center justify-center gap-2">
 
-                      {/* View button — unchanged */}
+                      {/* View button */}
                       <button
                         onClick={() => navigate(`/billing/invoices/${invoice.id}`)}
                         className="btn-secondary text-sm px-3 py-1"
+                        disabled={deleteLoading}
                       >
                         View
                       </button>
 
-                      {/* Edit button — NEW */}
+                      {/* Edit button */}
                       <button
                         onClick={() => navigate(`/billing/invoices/${invoice.id}/edit`)}
                         className="text-sm px-3 py-1 rounded font-medium
                                    bg-amber-500 hover:bg-amber-600
-                                   text-white transition-colors duration-150"
+                                   text-white transition-colors duration-150 disabled:opacity-50"
+                        disabled={deleteLoading}
                       >
                         ✏️ Edit
+                      </button>
+
+                      {/* Delete button */}
+                      <button
+                        onClick={() => handleDeleteClick(invoice)}
+                        className="text-sm px-3 py-1 rounded font-medium
+                                   bg-red-500 hover:bg-red-600
+                                   text-white transition-colors duration-150 disabled:opacity-50"
+                        disabled={deleteLoading}
+                        title="Delete invoice and restore inventory"
+                      >
+                        🗑️ Delete
                       </button>
 
                     </div>

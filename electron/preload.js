@@ -5,13 +5,14 @@ console.log("Preload loaded successfully");
 contextBridge.exposeInMainWorld("electron", {
   platform: process.platform,
   arch: process.arch,
-  // ✅ REMOVED: print - no longer needed
 });
 
+// File dialog wrapper
+const { dialog } = require("electron");
+
 contextBridge.exposeInMainWorld("api", {
-  // License Management
-  activateLicense: (licenseKey) =>
-    ipcRenderer.invoke("activate-license", licenseKey),
+  // File dialogs
+  showOpenDialog: (options) => ipcRenderer.invoke("show-open-dialog", options),
 
   // Authentication
   checkOwnerExists: () => ipcRenderer.invoke("check-owner-exists"),
@@ -128,6 +129,8 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("update-purchase-bill", billId, billData),
   deletePurchaseBill: (billId) =>
     ipcRenderer.invoke("delete-purchase-bill", billId),
+  importPurchasePdf: (filePath) =>
+    ipcRenderer.invoke("import-purchase-pdf", filePath),
 });
 
 // ✅ REMOVED: window.print override - was breaking popup print

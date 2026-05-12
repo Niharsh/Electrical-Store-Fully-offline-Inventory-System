@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { usePurchaseBills } from '../../context/PurchaseBillsContext';
+import PDFImportWidget from './PDFImportWidget';
 
 const PurchasesForm = ({ onSuccess }) => {
   const { createPurchaseBill, loading, error: contextError } = usePurchaseBills();
@@ -15,6 +16,8 @@ const PurchasesForm = ({ onSuccess }) => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [validationErrors, setValidationErrors] = useState({});
+  const [pdfConfidence, setPdfConfidence] = useState(null);
+  const [importedProducts, setImportedProducts] = useState([]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -82,7 +85,59 @@ const PurchasesForm = ({ onSuccess }) => {
 
       await createPurchaseBill(payload);
 
-      setMessage('✅ Purchase bill created successfully');
+      // Add imported products to inventory
+      if (importedProducts.length > 0) {
+        let added = 0;
+        let failed = 0;
+        for (const product of importedProducts) {
+          try {
+            // Check if product already exists by name
+          const searchResult = await window.api.searchProducts(product.product_name);
+          const existing = searchResult?.data?.results?.find(
+            p => p.name.toLowerCase().trim() === product.product_name.toLowerCase().trim()
+          );
+          
+          if (existing) {
+            // Product exists — add a new batch to it
+            const updatedProduct = {
+              ...existing,
+              batches: [
+                ...(existing.batches || []),
+                {
+                  quantity: product.quantity,
+                  mrp: product.mrp || 0,
+                  selling_rate: product.selling_rate || 0,
+                  cost_price: product.cost_price || 0,
+                }
+              ]
+            };
+            await window.api.updateProduct(existing.id, updatedProduct);
+          } else {
+            // New product — create it
+            await window.api.addProduct({
+              name: product.product_name,
+              hsn_code: product.hsn_code || '',
+              unit: product.unit || 'PCS',
+              batches: [{
+                quantity: product.quantity,
+                mrp: product.mrp || 0,
+                selling_rate: product.selling_rate || 0,
+                cost_price: product.cost_price || 0,
+              }]
+            });
+          }
+            added++;
+          } catch (productErr) {
+            console.error('Failed to add product:', product.product_name, productErr);
+            failed++;
+          }
+        }
+        setMessage(`✅ Purchase bill created. ${added} products added to inventory${failed > 0 ? `, ${failed} failed` : ''}.`);
+      } else {
+        setMessage('✅ Purchase bill created successfully');
+      }
+
+      setImportedProducts([]);
       setFormData({
         bill_number: '',
         purchase_date: new Date().toISOString().split('T')[0],
@@ -115,9 +170,55 @@ const PurchasesForm = ({ onSuccess }) => {
     }
   };
 
+  const getConfidenceBadgeColor = (score) => {
+    if (score >= 80) return 'bg-green-50 border-green-200 text-green-700';
+    if (score >= 50) return 'bg-yellow-50 border-yellow-200 text-yellow-700';
+    return 'bg-red-50 border-red-200 text-red-700';
+  };
+
+  const getConfidenceText = (score) => {
+    if (score >= 80) return '✅ Extracted successfully';
+    if (score >= 50) return '⚠️ Partially extracted — please review';
+    return '❌ Low confidence — check all fields';
+  };
+
+  const handleImportSuccess = (pdfData) => {
+  setPdfConfidence(pdfData.confidence || 0);
+  setImportedProducts(pdfData.products || []);
+
+  setFormData(prev => ({
+    ...prev,
+    wholesaler_name: pdfData.wholesaler_name || prev.wholesaler_name,
+    bill_number: pdfData.bill_number || prev.bill_number,
+    purchase_date: pdfData.bill_date || prev.purchase_date,
+  }));
+
+  setMessage(`✅ PDF imported successfully (Confidence: ${pdfData.confidence}%)`);
+  setTimeout(() => setMessage(''), 5000);
+};
+
+  const handleImportError = (errorMsg) => {
+    setError(`Failed to import PDF: ${errorMsg}`);
+    setTimeout(() => setError(''), 5000);
+  };
+
   return (
     <div className="bg-white p-6 rounded-lg shadow">
-      <h3 className="text-lg font-semibold mb-4">Create Purchase Bill</h3>
+      <h3 className="text-lg font-semibold mb-6">Create Purchase Bill</h3>
+
+      {/* PDF Import Widget */}
+      <PDFImportWidget 
+        onImportSuccess={handleImportSuccess}
+        onImportError={handleImportError}
+      />
+
+      {/* Confidence Badge */}
+      {pdfConfidence !== null && (
+        <div className={`mb-6 p-3 border rounded-lg ${getConfidenceBadgeColor(pdfConfidence)}`}>
+          <p className="text-sm font-medium">{getConfidenceText(pdfConfidence)}</p>
+          <p className="text-xs mt-1">All fields are editable. Please verify extracted data before saving.</p>
+        </div>
+      )}
 
       {message && <div className="mb-4 p-3 bg-green-100 text-green-700 rounded border border-green-300">{message}</div>}
       {error && <div className="mb-4 p-3 bg-red-100 text-red-700 rounded border border-red-300">{error}</div>}

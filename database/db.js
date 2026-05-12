@@ -1264,8 +1264,12 @@ function createInvoice(invoiceData) {
       }
 
       if (batch.quantity < quantity) {
+        const product = get("SELECT name FROM products WHERE id = ?", [
+          item.product_id,
+        ]);
+        const productName = product ? product.name : "Unknown Product";
         throw new Error(
-          `Insufficient stock: ${item.batch_number} has only ${batch.quantity} units, requested ${quantity}`,
+          `Insufficient stock: ${productName} has only ${batch.quantity} units, requested ${quantity}`,
         );
       }
 
@@ -1547,9 +1551,12 @@ function updateInvoice(id, invoiceData) {
           );
         }
         if (batch.quantity < quantity) {
+          const product = get("SELECT name FROM products WHERE id = ?", [
+            item.product_id,
+          ]);
+          const productName = product ? product.name : "Unknown Product";
           throw new Error(
-            `Insufficient stock: batch "${item.batch_number}" has ${batch.quantity} units, ` +
-              `but ${quantity} requested`,
+            `Insufficient stock: ${productName} has only ${batch.quantity} units, requested ${quantity}`,
           );
         }
       }

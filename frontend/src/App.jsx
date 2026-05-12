@@ -18,7 +18,6 @@ import ProductSearch from './pages/ProductSearch';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
-import ActivationPage from './pages/ActivationPage';
 import './App.css';
 import ErrorBoundary from './components/Common/ErrorBoundary';
 
@@ -52,8 +51,6 @@ function AuthenticatedLayout() {
                   <Navigation />
                 </div>
                 <Routes>
-                  <Route path="/activate" element={<ActivationPage />} />
-
                   <Route
                     path="/dashboard"
                     element={
@@ -151,20 +148,6 @@ function AuthenticatedLayout() {
 // ─────────────────────────────────────────────
 function AppContent() {
   const { auth, ownerExists, loading } = useAuth();
-
-  // ✅ Activation window check (hash-based)
-  const isActivationWindow =
-    window.location.hash === '#activate' ||
-    window.location.hash === '#/activate';
-
-  if (isActivationWindow) {
-    return (
-      <Routes>
-        <Route path="/activate" element={<ActivationPage />} />
-        <Route path="*" element={<Navigate to="/activate" replace />} />
-      </Routes>
-    );
-  }
 
   // ✅ Auth still initializing
   if (loading) {

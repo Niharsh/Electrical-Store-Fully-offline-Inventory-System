@@ -40,12 +40,16 @@
       {
         "from": "database",
         "to": "database",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "frontend/dist",
         "to": "frontend/dist",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "asarUnpack": [
@@ -59,7 +63,10 @@
     ],
     "win": {
       "icon": "build/icon.png",
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "certificateFile": null,
       "certificatePassword": null
     },
@@ -79,7 +86,9 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "hardenedRuntime": false,
@@ -112,6 +121,7 @@
     }
   },
   "dependencies": {
-    "better-sqlite3": "^11.3.0"
+    "better-sqlite3": "^11.3.0",
+    "pdf-parse": "^1.1.1"
   }
 }

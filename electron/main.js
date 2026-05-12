@@ -10,6 +10,8 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const net = require("net");
+const pdfParseLib = require("pdf-parse");
+const { parsePurchaseInvoice } = require("../tools/pdfParser");
 // ensure correct resolution both during development (file system) and
 // packaged inside app.asar
 // compute path to database module in a packaging-friendly way
@@ -42,15 +44,8 @@ function resolveDatabasePath() {
 
 const dbPath = resolveDatabasePath();
 const db = require(dbPath);
-const {
-  initializeLicense,
-  activateLicense,
-} = require("./licensing/licenseValidator");
 
 let mainWindow;
-let activationWindow;
-let licenseValid = false; // Track if license is validated
-let activationComplete = false; // Track if activation process is complete
 app.commandLine.appendSwitch("disable-gpu-shader-disk-cache");
 app.commandLine.appendSwitch("disable-http-cache");
 const gotLock = app.requestSingleInstanceLock();
@@ -239,153 +234,6 @@ function createWindow() {
     mainWindow = null;
   });
 }
-
-/**
- * Create Activation Window - shown when license is invalid/missing
- * Blocks main app from running until valid license is activated
- */
-function createActivationWindow() {
-  activationWindow = new BrowserWindow({
-    width: 600,
-    height: 800,
-    minWidth: 500,
-    minHeight: 700,
-    show: false, // ← Don't show until ready
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, "preload.js"),
-      // ↓ Fix GPU cache errors
-      backgroundThrottling: false,
-    },
-    icon: path.join(__dirname, "../build/icon.png"),
-  });
-
-  // Only show window when page is ready
-  activationWindow.once("ready-to-show", () => {
-    activationWindow.show();
-    console.log("[license-window] Window ready and shown");
-  });
-
-  //debug events for activation window
-  activationWindow.webContents.on(
-    "did-fail-load",
-    (event, errorCode, errorDescription) => {
-      console.error(
-        "[license-window] did-fail-load:",
-        errorCode,
-        errorDescription,
-      );
-    },
-  );
-
-  activationWindow.webContents.on("render-process-gone", (event, details) => {
-    console.error(
-      "[license-window] render-process-gone:",
-      details.reason,
-      details.exitCode,
-    );
-  });
-
-  activationWindow.webContents.on("crashed", (event, killed) => {
-    console.error("[license-window] crashed, killed:", killed);
-  });
-
-  // Prevent closing window without valid license
-  activationWindow.on("close", (e) => {
-    if (!activationComplete) {
-      console.log("[license-window] Close attempt blocked");
-      e.preventDefault();
-    }
-  });
-
-  // Load activation page
-  if (!app.isPackaged) {
-    activationWindow
-      .loadURL("http://localhost:5173/#/activate")
-      .then(() => console.log("[license-window] loadURL success"))
-      .catch((err) => console.error("[license-window] loadURL error:", err));
-  } else {
-    // Frontend is now in extraResources, outside asar
-    const prodFile = path.join(
-      process.resourcesPath,
-      "frontend",
-      "dist",
-      "index.html",
-    );
-    console.log(
-      "[license-window] prodFile:",
-      prodFile,
-      "exists:",
-      fs.existsSync(prodFile),
-    );
-
-    activationWindow
-      .loadFile(prodFile, { hash: "activate" })
-      .then(() => console.log("[license-window] loadFile success"))
-      .catch((err) => console.error("[license-window] loadFile error:", err));
-  }
-
-  activationWindow.on("closed", () => {
-    activationWindow = null;
-    // Only quit if activation was NOT completed
-    if (!activationComplete) {
-      console.log("[license-window] Closed without activation - quitting app");
-      app.quit();
-    } else {
-      console.log(
-        "[license-window] Closed after activation - main window should be open",
-      );
-    }
-  });
-}
-
-// ═════════════════════════════════════════════════════════════════
-// LICENSE MANAGEMENT IPC HANDLERS
-// ═════════════════════════════════════════════════════════════════
-
-// IPC: activate-license
-ipcMain.handle("activate-license", async (event, licenseKey) => {
-  try {
-    console.log("[ipc] activate-license handler called");
-
-    // Validate license with encryption
-    const result = await activateLicense(app, licenseKey);
-
-    if (result.success) {
-      console.log("[ipc] License activation successful");
-      licenseValid = true;
-      activationComplete = true; // Allow window to close now
-
-      if (activationWindow) {
-        activationWindow.destroy(); // destroy() bypasses close event
-      }
-
-      // small delay to ensure activation window is closed before opening main window
-      setTimeout(() => {
-        createWindow(); // Create main app window
-      }, 500);
-
-      return {
-        success: true,
-        message: "License activated successfully!",
-        expiry: result.expiry,
-      };
-    } else {
-      console.error("[ipc] License activation failed:", result.message);
-      return {
-        success: false,
-        message: result.message,
-      };
-    }
-  } catch (err) {
-    console.error("[ipc] License activation error:", err.message);
-    return {
-      success: false,
-      message: err.message || "Activation failed",
-    };
-  }
-});
 
 // IPC: handle print requests - open native Electron print dialog
 // The native dialog includes "Save as PDF" option
@@ -1607,6 +1455,60 @@ ipcMain.handle("get-recent-invoices", async (event, limit = 10) => {
 
 // ========== PURCHASE BILL IPC HANDLERS ==========
 
+// IPC: show-open-dialog - open file selection dialog
+ipcMain.handle("show-open-dialog", async (event, options) => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, options);
+    return result;
+  } catch (err) {
+    console.error("[ipc] show-open-dialog error:", err);
+    return { canceled: true, filePaths: [] };
+  }
+});
+
+// IPC: import-purchase-pdf - read PDF and extract purchase bill data
+ipcMain.handle("import-purchase-pdf", async (event, filePath) => {
+  try {
+    console.log("[ipc] import-purchase-pdf called with file:", filePath);
+
+    if (!filePath || !fs.existsSync(filePath)) {
+      throw new Error("File not found");
+    }
+
+    // Read PDF file
+    const pdfBuffer = fs.readFileSync(filePath);
+
+    const pdfData = await pdfParseLib(pdfBuffer);
+
+    if (!pdfData || !pdfData.text) {
+      throw new Error(
+        "No text extracted from PDF. PDF may be scanned/image-based.",
+      );
+    }
+
+    const rawText = pdfData.text;
+    console.log("[debug] raw text sample:\n", rawText.substring(0, 2000));
+
+    // Parse the extracted text to get structured data
+    const parsedData = parsePurchaseInvoice(rawText);
+
+    console.log("[ipc] import-purchase-pdf extracted:", parsedData);
+
+    return {
+      success: true,
+      message: "PDF imported successfully",
+      data: parsedData,
+    };
+  } catch (err) {
+    console.error("[ipc] import-purchase-pdf error:", err);
+    return {
+      success: false,
+      message: err.message || "Failed to import PDF",
+      data: null,
+    };
+  }
+});
+
 // IPC: create-purchase-bill - create new purchase bill
 ipcMain.handle("create-purchase-bill", async (event, billData) => {
   try {
@@ -1896,45 +1798,14 @@ app.whenReady().then(async () => {
     console.error("[electron] Failed to initialize database:", err);
   }
 
-  // Check license BEFORE creating main window
-  console.log("[electron] Checking license...");
-  try {
-    licenseValid = await initializeLicense(app);
-    console.log(
-      "[electron] License status:",
-      licenseValid ? "VALID" : "INVALID",
-    );
-  } catch (err) {
-    console.error("[electron] License check error:", err.message);
-    licenseValid = false;
-  }
-
-  if (licenseValid) {
-    // License is valid - create main app window
-    console.log("[electron] Creating main application window...");
-    createWindow();
-  } else {
-    // No valid license - create activation window instead
-    console.log("[electron] Creating activation window...");
-    createActivationWindow();
-  }
+  // Create main application window
+  console.log("[electron] Creating main application window...");
+  createWindow();
 
   createMenu();
 });
 
 app.on("window-all-closed", async () => {
-  // Don't quit if activation just completed and main window is created
-  if (activationComplete && !mainWindow) {
-    console.log("[app] window-all-closed ignored - main window being created");
-    return;
-  }
-
-  // Don't quit if activation is in progress
-  if (!licenseValid && !activationComplete) {
-    console.log("[app] window-all-closed ignored - waiting for activation");
-    return;
-  }
-
   // Auto-backup database before exit
   try {
     const userDataPath = app.getPath("userData");
@@ -1992,7 +1863,7 @@ app.on("window-all-closed", async () => {
 });
 
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0 && licenseValid) {
+  if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
 });
