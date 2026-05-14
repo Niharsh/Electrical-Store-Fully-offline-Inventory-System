@@ -73,10 +73,15 @@
 - **Multiple Print Layouts** — Thermal (58mm) and A4 printer support
 - **Invoice History** — Search and retrieve past invoices by customer, date, or amount
 - **Invoice Editing** — Modify invoices before finalization
+- **Invoice Deletion** — Delete invoices with automatic inventory quantity restoration
 - **Digital Invoice Storage** — All invoices stored locally for historical reference
 
 ### 🛒 **Purchase & Supplier Management**
 
+- **PDF Invoice Import** — Upload GST purchase invoices and auto-extract bill data
+- **Smart Data Extraction** — AI-powered extraction of wholesaler, bill number, date, products
+- **Auto-Product Creation** — Automatically add extracted products to inventory
+- **Confidence Scoring** — See extraction accuracy percentage for review
 - **Purchase Bill Recording** — Log purchases from wholesalers with full details
 - **Automatic Stock Update** — Stock increases automatically when bills are created
 - **Wholesaler Database** — Maintain supplier contact and transaction history
@@ -115,6 +120,7 @@
 | **Backend (IPC)** | Node.js + Electron main process | — |
 | **Database** | SQLite3 | — |
 | **DB Driver** | better-sqlite3 | (synchronous, fast) |
+| **PDF Parsing** | pdf-parse | (extract text from invoices) |
 | **UI Framework** | Tailwind CSS | 4.1.18 |
 | **Routing** | React Router | 7.12.0 |
 | **Icons** | Lucide React | 0.575.0 |
@@ -703,6 +709,100 @@ For production, configure code signing in `package.json`:
 - **Local Validation**: All checks done locally
 - **Encrypted Storage**: All data encrypted at rest
 - **Air-Gapped**: Can run on disconnected machine
+
+---
+
+## 📦 Recent Changes & Updates
+
+### ✨ **New Features Added**
+
+#### **PDF Invoice Import for Purchases** (v1.1.0)
+- **Smart PDF Parser**: Upload GST invoice PDFs and automatically extract:
+  - Wholesaler/supplier name
+  - Bill number and date
+  - Product details (name, HSN code, quantity, price)
+  - Confidence score (0-100%) indicating extraction accuracy
+- **PDFImportWidget Component**: Beautiful, user-friendly upload interface
+- **Auto-Product Creation**: Extracted products automatically added to inventory
+- **Confidence Scoring**: Visual feedback on extraction quality
+- **Files Added**:
+  - `frontend/src/components/SalesAndPurchases/PDFImportWidget.jsx` — UI widget
+  - `tools/pdfParser.js` — PDF parsing and data extraction engine
+- **Dependencies Added**: `pdf-parse` (v1.1.1) for text extraction from PDFs
+
+#### **Invoice Deletion with Inventory Restoration**
+- **Delete Button**: New delete action in invoice history (red button)
+- **Confirmation Dialog**: User confirmation before deletion
+- **Automatic Rollback**: Deleting invoice restores all product quantities to inventory
+- **Safety**: Prevention of accidental data loss
+
+### ⚠️ **Features Removed**
+
+#### **License Activation System** (Simplified for Development)
+- **Removed**: Hardware-locked license validation on app startup
+- **Removed**: License activation window (ActivationPage)
+- **Removed**: License key verification and encryption system
+- **Impact**: App now launches directly without license checks
+- **Files Removed/Simplified**:
+  - Removed `createActivationWindow()` function from `electron/main.js`
+  - Removed all license validation logic from app startup
+  - Removed IPC handlers for `activate-license`
+  - Removed license-related state variables (`licenseValid`, `activationComplete`)
+  - App removed route to `/activate` page
+
+#### **Why Removed?**
+- Simplified development workflow
+- Focus on core features (billing, inventory, purchases)
+- License system can be re-added later for production release
+
+### 📝 **Modified Files**
+
+| File | Changes |
+|------|---------|
+| `electron/main.js` | Removed license initialization, activation window, license validation on startup |
+| `electron/preload.js` | Replaced license APIs with file dialog API; added PDF import handler |
+| `frontend/src/App.jsx` | Removed ActivationPage route; removed activation window detection logic |
+| `frontend/src/components/Billing/InvoiceHistory.jsx` | Added delete button and delete handler with confirmation |
+| `frontend/src/components/SalesAndPurchases/PurchasesForm.jsx` | Integrated PDFImportWidget; auto-add extracted products to inventory |
+| `database/db.js` | Enhanced error messages showing product names instead of batch numbers |
+| `package.json` | Added `pdf-parse` dependency |
+
+---
+
+## 🔄 Upgrade Notes
+
+**From v1.0.0 to v1.1.0:**
+- No database migrations required
+- Invoice deletion creates automatic backup before deletion
+- PDF import works with standard Indian GST invoices (format: description, HSN, qty, price, amount)
+- License system no longer blocks startup (re-enable in production)
+
+---
+
+## 🆘 Troubleshooting
+
+### PDF Import not working
+
+**Error: "PDF import API not available"**
+- Solution: Ensure app was rebuilt after installing `pdf-parse`
+- Run: `npm install` from root directory
+- Restart the application
+
+**Error: "No text extracted from PDF"**
+- Cause: PDF is scanned/image-based (not text-searchable)
+- Solution: Use OCR to extract text before importing, or manually enter data
+
+**Extracted data looks wrong**
+- Check confidence score (should be >70% for good extraction)
+- Verify format matches standard Indian GST invoice
+- All fields are editable—correct before saving
+
+### Invoice deletion accidental
+
+**Oops! I deleted the wrong invoice**
+- Solution: Restore from database backup (if available)
+- Go to Settings → Database Management → Restore from Backup
+- Recovery only works if backup was created before deletion
 
 ---
 

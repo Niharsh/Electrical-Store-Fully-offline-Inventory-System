@@ -50,6 +50,11 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "tools",
+        "to": "tools",
+        "filter": ["**/*"]
       }
     ],
     "asarUnpack": [
@@ -59,6 +64,7 @@
     ],
     "files": [
       "electron/**/*",
+      "tools/**/*",
       "package.json"
     ],
     "win": {

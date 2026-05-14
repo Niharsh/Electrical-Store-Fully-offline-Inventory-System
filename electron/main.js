@@ -11,7 +11,11 @@ const fs = require("fs");
 const os = require("os");
 const net = require("net");
 const pdfParseLib = require("pdf-parse");
-const { parsePurchaseInvoice } = require("../tools/pdfParser");
+const { parsePurchaseInvoice } = require(
+  app.isPackaged
+    ? path.join(process.resourcesPath, "tools", "pdfParser")
+    : path.join(__dirname, "..", "tools", "pdfParser"),
+);
 // ensure correct resolution both during development (file system) and
 // packaged inside app.asar
 // compute path to database module in a packaging-friendly way
